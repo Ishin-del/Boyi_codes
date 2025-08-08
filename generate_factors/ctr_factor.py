@@ -48,11 +48,18 @@ class Factor_CTR:
         self.total_share.DATE = self.total_share.DATE.str.replace('-', '')
         self.total_share = self.total_share[self.total_share['DATE'] <= self.time_end]
         self.total_share = self.total_share[self.total_share['DATE'] >= self.time_start]
+        # 复权因子
+        adj_df = feather.read_dataframe(os.path.join(DataPath.data_storage2, 'adj_factors.feather'))
+        adj_df = adj_df[adj_df['DATE'] <= self.time_end]
+        adj_df = adj_df[adj_df['DATE'] >= self.time_start]
 
         # 价格数据
         self.daily = pd.read_feather(os.path.join(DataPath.data_storage2, 'daily.feather'))
         self.daily = self.daily[self.daily['DATE'] <= self.time_end]
         self.daily = self.daily[self.daily['DATE'] >= self.time_start]
+        self.daily=self.daily.merge(adj_df,on=['TICKER', 'DATE'],how='left')
+
+
 
     def __concat_data(self):
         '''因为文件太大，读数据会有点慢'''
@@ -78,11 +85,15 @@ class Factor_CTR:
         self.daily = self.daily[self.daily['TICKER'].isin(self.tickerpool['TICKER'])]
         self.daily = self.daily.merge(self.total_share, on=['DATE', 'TICKER'], how='left')[
             ['DATE', 'TICKER', 'open', 'close', 'volume', 'total_share']]
+
+        self.daily['close']*=self.daily['adj_factors']
+        self.daily['open']*=self.daily['adj_factors']
+
         self.daily['mkt_size'] = self.daily['total_share'] * self.daily['close']
         self.daily.sort_values(['TICKER', 'DATE'], inplace=True)
         self.daily['pre_close'] = self.daily.groupby('TICKER')['close'].shift(1).values
         self.daily['intra_ret'] = self.daily['close'] / self.daily['open'] - 1  # 日内收益率
-        self.daily['night_ret'] = self.daily['close'] / self.daily['pre_close'] - 1  # 隔夜收益率
+        self.daily['night_ret'] = self.daily.groupby('TICKER')['close'].shift(1)/self.daily['open']-1  # 隔夜收益率
         call_auc_vol = self.__concat_data()
         self.daily = self.daily.merge(call_auc_vol, on=['DATE', 'TICKER'], how='inner')
         self.daily['pre_total_share'] = self.daily.groupby('TICKER')['total_share'].shift(1)  # 昨日总股本
@@ -92,7 +103,7 @@ class Factor_CTR:
     def cal(self, main_label, help_label, cols):
         tar_date_list = sorted(list(self.daily.DATE.drop_duplicates()))
         fac = []
-        for i in range(len(tar_date_list) - self.rolling_window - 1):
+        for i in range(len(tar_date_list) - self.rolling_window + 1):
             tmp_date_list = tar_date_list[i:i + self.rolling_window]
             tmp = self.daily[self.daily.DATE.isin(tmp_date_list)][['DATE', 'TICKER', help_label, main_label]]
             tmp=tmp.groupby('TICKER').filter(lambda x: len(x) >= 20)
@@ -137,7 +148,6 @@ class Factor_CTR:
         df4.to_csv(os.path.join(DataPath.save_path, 'check4.csv'))
 
         # elif label=='tr_o': #换手率对异质信念的识别：次日隔夜换手率的辅助 5
-        # todo:
         df5 = self.cal(main_label='overnight_turn', help_label='night_ret',
                        cols=['night_turn_1', 'night_turn_2', 'night_turn_3', 'night_turn_4', 'night_turn_5'])
         df5.to_csv(os.path.join(DataPath.save_path, 'check5.csv'))
@@ -157,7 +167,7 @@ class Factor_CTR:
 
         # elif label=='ctr': # 8
         ctr = []
-        for i in range(len(tar_date_list) - self.rolling_window - 1):
+        for i in range(len(tar_date_list) - self.rolling_window + 1):
             tmp_date_list = tar_date_list[i:i + self.rolling_window]
             tmp = self.daily[self.daily.DATE.isin(tmp_date_list)][['DATE', 'TICKER', 'turnover', 'over_night_smart']]
             tmp.sort_values(['TICKER', 'DATE'], inplace=True)
@@ -178,7 +188,7 @@ class Factor_CTR:
 
         # elif label=='jump_ctr': #9
         jump_ctr = []
-        for i in range(len(tar_date_list) - self.rolling_window - 1):
+        for i in range(len(tar_date_list) - self.rolling_window + 1):
             tmp_date_list = tar_date_list[i:i + self.rolling_window]
             tmp = self.daily[self.daily.DATE.isin(tmp_date_list)][
                 ['DATE', 'TICKER', 'turnover', 'pre_over_night_smart']]
