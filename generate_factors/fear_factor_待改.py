@@ -1,0 +1,178 @@
+import os
+import feather
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+import warnings
+import sys
+sys.path.append('../')
+warnings.filterwarnings(action='ignore')
+
+# 方正证券 显著效应、极端收益扭曲决策权重和“草木皆兵”因子——多因子选股系列研究之八
+# 个人投资者交易比-惊恐因子
+
+class DataPath():
+    feather_2022 = r'\\192.168.1.28\h\data_feather(2022)\data_feather'
+    feather_2023 = r'\\192.168.1.28\h\data_feather(2023)\data_feather'
+    feather_2024 = r'\\192.168.1.28\i\data_feather(2024)\data_feather'
+    feather_2025 = r'\\192.168.1.28\i\data_feather(2025)\data_feather'
+
+
+class FEAR(object):
+    def __init__(self, start=None, end=None, path=None,test_path=None,data = pd.DataFrame(),stock_pool=None,savepath=None):
+        self.start = start or '20240124'   # 开始日期
+        self.end = end or '20240131'   # 结束日期
+        self.stock_pool=stock_pool or r'\\zkh\O\Data_Storage\Data_Storage'
+        self.mkt= path or r'D:\tyx\原数据\mkt'
+        self.savepath = savepath or r'C:\Users\Administrator\Desktop'
+        self.sh_path=r'\\zkh\O\Data_Storage\tyx_min'
+        self.sz_path=r'\\zkh\O\Data_Storage\tyx_min'
+
+    def processing_tick_data(self, ticker, date):
+        # print(1)
+        try:
+            if date <= '20221231':
+                featherpath = DataPath.feather_2022
+            elif date > '20230101' and date <= '20231231':
+                featherpath = DataPath.feather_2023
+            elif date > '20240101' and date <= '20241231':
+                featherpath = DataPath.feather_2024
+            elif date > '20250101' and date <= '20251231':
+                featherpath = DataPath.feather_2025
+            else:
+                raise ValueError(f'{date} is not Valid !')
+
+            if ticker.endswith('SH'):
+                if date >= '20240101':
+                    data = feather.read_dataframe(os.path.join(featherpath, date, 'stock_tick', ticker[:6] + '.feather'))
+                    data=data[data['Type']=='T'][['BuyOrderNo', 'SellOrderNo','TradeMoney']]
+                    # data['TickBSFlag']=np.where(data['BuyOrderNo']>data['SellOrderNo'],'B','S')
+                    b_money=data.groupby('BuyOrderNo')['TradeMoney'].sum().reset_index()
+                    b_money=b_money[b_money['TradeMoney']<40000]['TradeMoney'].sum()
+                    s_money=data.groupby('SellOrderNo')['TradeMoney'].sum().reset_index()
+                    s_money = s_money[s_money['TradeMoney'] < 40000]['TradeMoney'].sum()
+                    indivi_ratio=(b_money+s_money)/2/data['TradeMoney'].sum()
+                else:
+                    data = feather.read_dataframe(os.path.join(featherpath, date, 'tick', ticker[:6] + '.feather'))
+                    data=data[['BuyNo', 'SellNo','TradeAmount']]
+                    b_money = data.groupby('BuyNo')['TradeAmount'].sum().reset_index()
+                    b_money = b_money[b_money['TradeAmount'] < 40000]['TradeAmount'].sum()
+                    s_money = data.groupby('SellNo')['TradeAmount'].sum().reset_index()
+                    s_money = s_money[s_money['TradeAmount'] < 40000]['TradeAmount'].sum()
+                    indivi_ratio = (b_money + s_money) / 2 / data['TradeAmount'].sum()
+            elif ticker.endswith('SZ'):
+                # todo:
+                data = feather.read_dataframe(os.path.join(featherpath, date, 'hq_trade_spot', ticker[:6] + '.feather'))
+                data['TradeMoney']=data.Price*data.TradeQty
+                data=data[data.ExecType=='F'][['BidApplSeqNum','OfferApplSeqNum','TradeMoney']]
+                # data['TickBSFlag'] = np.where(data['BidApplSeqNum'] > data['OfferApplSeqNum'], 'B', 'S')
+                b_money = data.groupby('BidApplSeqNum')['TradeMoney'].sum().reset_index()
+                b_money = b_money[b_money['TradeMoney'] < 40000]['TradeMoney'].sum()
+                s_money = data.groupby('OfferApplSeqNum')['TradeMoney'].sum().reset_index()
+                s_money = s_money[s_money['TradeMoney'] < 40000]['TradeMoney'].sum()
+                indivi_ratio = (b_money + s_money) / 2 / data['TradeMoney'].sum()
+            else:
+                raise ValueError(f'{ticker} is not Valid!')
+            print(ticker,date,indivi_ratio)
+            return indivi_ratio
+        except:
+            print(ticker, date, 'wrong')
+            return
+
+    def cal_tick_data(self):
+        res={'DATE':[],'TICKER':[],'indivi_ratio':[]}
+        for _,l in tqdm(self.stock_pool[['DATE','TICKER']].iterrows()):
+            day,stock=l[0],l[1]
+            tmp=self.processing_tick_data(stock,day)
+            res['DATE'].append(day)
+            res['TICKER'].append(stock)
+            res['indivi_ratio'].append(tmp)
+        res=pd.DataFrame(res).reset_index(drop=True)
+        return res
+
+
+    def __load_data(self):
+        self.stock_pool = feather.read_dataframe(os.path.join(self.stock_pool, 'daily.feather'),columns=['TICKER', 'DATE', 'close'])
+        self.stock_pool = self.stock_pool[(self.stock_pool['DATE'] <= self.end) & (self.stock_pool['DATE'] >= self.start)]
+        self.stock_pool.sort_values(['TICKER','DATE'],inplace=True)
+        self.stock_pool['stock_ret']=self.stock_pool.groupby('TICKER')['close'].pct_change()
+        self.stock_pool.drop(columns='close',inplace=True)
+
+        # 读取 & 计算市场数据
+        mkt_sh=pd.read_csv(os.path.join(self.mkt,'000001.SH.csv'))[['time','close','preClose']]
+        mkt_sh['DATE']=mkt_sh['time'].str.replace('-', '')
+        mkt_sh['mkt_ret']=mkt_sh['close']/mkt_sh['preClose']-1
+        mkt_sh=mkt_sh[['DATE','mkt_ret']]
+
+        mkt_sz=pd.read_csv(os.path.join(self.mkt,'399001.SZ.csv'))[['time','close','preClose']]
+        mkt_sz['DATE'] = mkt_sz['time'].str.replace('-', '')
+        mkt_sz['mkt_ret']=mkt_sz['close']/mkt_sz['preClose']-1
+        mkt_sz=mkt_sz[['DATE','mkt_ret']]
+
+        # 合并到stock_pool上
+        mkt_sz=self.stock_pool[self.stock_pool.TICKER.str.endswith('.SZ')].merge(mkt_sz, on='DATE',how='left')
+        mkt_sh=self.stock_pool[self.stock_pool.TICKER.str.endswith('.SH')].merge(mkt_sh, on='DATE',how='left')
+        self.stock_pool=pd.concat([mkt_sz,mkt_sh]).reset_index(drop=True)
+
+        # 计算惊恐度
+        self.stock_pool['fear_degree']=(abs((self.stock_pool['stock_ret']-self.stock_pool['mkt_ret']))/
+                                        (abs(self.stock_pool['stock_ret']))+abs(self.stock_pool['mkt_ret'])+0.1)
+        self.stock_pool=self.stock_pool[(self.stock_pool!=np.inf).all(axis=1)]
+
+
+    def cal_min_ret(self):
+        # 根据分钟频 拉取日频分钟收益率的波动率
+        res = []
+        use_ticker = self.stock_pool.TICKER.drop_duplicates()
+        use_date = self.stock_pool.DATE.drop_duplicates()
+        for path in [self.sh_path, self.sz_path]:
+            for file in tqdm(os.listdir(path)):
+                if file[:8] in list(use_date):
+                    tmp = feather.read_dataframe(os.path.join(path, file))[['TICKER', 'min', 'close']]
+                    tmp = tmp[tmp.TICKER.isin(use_ticker)]
+                    # 因子计算：
+                    tmp = tmp[(tmp['min'] > 930) & (tmp['min'] < 1457)]
+                    tmp.sort_values(['TICKER', 'min'], inplace=True)
+                    tmp['min_ret'] = tmp.groupby('TICKER')['close'].pct_change()
+                    tmp = tmp[(tmp != np.inf).all(axis=1)]
+                    tmp = tmp[(tmp != -np.inf).all(axis=1)]
+                    tmp = tmp.groupby('TICKER')['min_ret'].agg('std').reset_index()
+                    tmp.rename(columns={'min_ret':'volatility'},inplace=True)
+                    tmp['DATE'] = file[:8]
+                    res.append(tmp)
+            # todo:
+            break
+        res = pd.concat(res).reset_index(drop=True)
+        return res
+
+
+    def cal(self):
+        self.__load_data()
+        res=self.cal_min_ret()
+        self.stock_pool=self.stock_pool.merge(res,on=['DATE','TICKER'],how='left')
+        self.stock_pool.dropna(how='any',axis=0,inplace=True)
+        # todo:
+        self.stock_pool=self.stock_pool[self.stock_pool.TICKER.isin(['600000.SH','600004.SH','600006.SH','600007.SH','600008.SH'])]
+        res=self.cal_tick_data()
+        self.stock_pool=self.stock_pool.merge(res,on=['DATE','TICKER'],how='left')
+        # 注意力衰减: 只筛选出来惊恐度大于前两天惊恐度均值作为权重，删除小于的数据
+        # todo:这样数据不就会减少？
+        self.stock_pool['prev_mean'] =self.stock_pool.groupby('TICKER')['fear_degree'].transform(lambda x: x.shift(1).rolling(window=2).mean())
+        self.stock_pool['fear_diff'] = self.stock_pool['fear_degree'] - self.stock_pool['prev_mean']
+        self.stock_pool['fear_adj'] = self.stock_pool['fear_diff'].where(self.stock_pool['fear_diff'] > 0)
+        self.stock_pool.drop(['prev_mean', 'fear_diff'], axis=1, inplace=True)
+        self.stock_pool.dropna(axis=0,inplace=True,how='any')
+        # 草木皆兵因子
+        self.stock_pool['tree_soldier']=self.stock_pool['fear_adj']*self.stock_pool['volatility']*self.stock_pool['indivi_ratio']
+        self.stock_pool.sort_values(['TICKER','DATE'],inplace=True)
+        self.stock_pool['tree_soldier_ret']=self.stock_pool.groupby('TICKER')['tree_soldier'].apply(lambda x: x.rolling(window=1,min_periods=1).mean()).values
+        self.stock_pool['tree_soldier_vol']=self.stock_pool.groupby('TICKER')['tree_soldier'].apply(lambda x: x.rolling(window=1,min_periods=1).std()).values
+        self.stock_pool['fear_idvi_fac']=(self.stock_pool['tree_soldier_ret']+self.stock_pool['tree_soldier_vol'])/2
+    def run(self):
+        self.cal()
+
+
+if __name__ == '__main__':
+    object = FEAR()
+    # break_point = 1
+    object.run()
