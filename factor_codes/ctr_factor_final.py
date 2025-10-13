@@ -90,7 +90,7 @@ def get_early_vol(full_dl, file_path=os.path.join(DataPath.tmp_path,'集合竞�
 
 def read_data(time_start='',time_end='',
               df_path=DataPath.daily_path,
-              total_share_path=os.path.join(DataPath.to_data_path,'totalShares.hdf5'),
+              total_share_path=os.path.join(DataPath.to_data_path,'totalShares.h5'),
               adj_df_path=os.path.join(DataPath.to_df_path,'adj_factors.feather')
               ):
     df = feather.read_dataframe(df_path)[['DATE', 'TICKER', 'open', 'high', 'low', 'close', 'volume']]
