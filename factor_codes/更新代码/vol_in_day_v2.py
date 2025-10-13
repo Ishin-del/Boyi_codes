@@ -6,7 +6,7 @@ from joblib import Parallel,delayed
 from tqdm import tqdm
 from tool_tyx.path_data import DataPath
 import numpy as np
-from tool_tyx.tyx_funcs import update_muli, process_na_stock
+from tool_tyx.tyx_funcs import process_na_stock
 
 
 def get_data_min(date):
@@ -97,6 +97,47 @@ def run(start='20250101',end='20250114'):
 def update(today='20250904'):
     update_muli('AmtPerTrd_rolling20.feather',today,run,num=-150)
     # pass
+
+def update_muli(filename,today,run,num=-50):
+    if os.path.exists(os.path.join(DataPath.save_path_update,filename)):
+    # if False:
+        print('因子更新中')
+        old=feather.read_dataframe(os.path.join(DataPath.save_path_update,filename))
+        new_start=sorted(old.DATE.drop_duplicates().to_list())[num]
+        res=run(start=new_start,end=today)
+        for df in res:
+            for col in df.columns[2:]:
+                tmp=df[['DATE','TICKER',col]]
+                # feather.write_dataframe(tmp, os.path.join(r'C:\Users\admin\Desktop', col + '.feather'))
+                old=feather.read_dataframe(os.path.join(DataPath.save_path_update,col+'.feather'))
+                test=old.merge(tmp,on=['DATE','TICKER'],how='inner').dropna()
+                test.sort_values(['TICKER','DATE'],inplace=True)
+                tar_list = sorted(list(test.DATE.unique()))[-5:]
+                test = test[test.DATE.isin(tar_list)]
+                if np.isclose(test.iloc[:,2],test.iloc[:,3]).all():
+                    tmp=tmp[tmp.DATE>old.DATE.max()]
+                    old=pd.concat([old,tmp]).reset_index(drop=True).drop_duplicates()
+                    print(old)
+                    feather.write_dataframe(old,os.path.join(DataPath.save_path_update,col+'.feather'))
+                    feather.write_dataframe(old,os.path.join(DataPath.factor_out_path,col+'.feather'))
+                else:
+                    print(test[~np.isclose(test.iloc[:,2],test.iloc[:,3])])
+                    # tt=test[~np.isclose(test.iloc[:, 2], test.iloc[:, 3])]
+                    # feather.write_dataframe(tt,r'C:\Users\admin\Desktop\tt.feather')
+                    print('检查更新出错!')
+                    exit()
+    else:
+        print('因子生成中')
+        res=run(start='20200101',end='20221231')
+        # res=run(start='20200101',end='20250822')
+        # res=run(start='20250828',end='20250829')
+        for df in res:
+            for col in df.columns[2:]:
+                tmp=df[['DATE','TICKER',col]]
+                print(tmp)
+                feather.write_dataframe(tmp,os.path.join(DataPath.save_path_old,col+'.feather'))
+                feather.write_dataframe(tmp,os.path.join(DataPath.save_path_update,col+'.feather'))
+                # feather.write_dataframe(tmp,os.path.join(r'C:\Users\admin\Desktop\test',col+'.feather'))
 
 if __name__=='__main__':
     update()

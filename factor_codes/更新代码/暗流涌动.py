@@ -38,6 +38,7 @@ def get_data_min(date):
     if df_min.empty:
         return
     df_min.sort_values(['TICKER','min'],inplace=True)
+    df_min = process_na_stock(df_min, 'volume')
     factor_df1=cal1(df_min)
     factor_df2=cal2(df_min)
     return factor_df1,factor_df2
@@ -47,7 +48,6 @@ def cal2(df_min):
         量的冲击反应较大。"""
     warnings.filterwarnings('ignore')
     date=df_min.DATE.iloc[0]
-
     df_min['vol_mean_5min']=df_min.groupby('TICKER').rolling(5)['volume'].mean().values
     df_min['price_volatility']=(df_min['high']-df_min['low'])/df_min['open']
     # df_min['flag']=np.where((df_min['volume']-df_min['vol_mean_5min'])>df_min['vol_mean_5min'],1,0) #1:激增时刻,0:普通时刻
@@ -87,6 +87,7 @@ def cal1(df_min):
     return df[['DATE','TICKER','entropy_adjust']]
 
 def run(start='20200101',end='20250822'):
+    print(start)#603377
     # daily_df=feather.read_dataframe(DataPath.daily_path)
     calender=pd.read_csv(os.path.join(DataPath.to_path,'calendar.csv'))
     calender['trade_date']=calender['trade_date'].astype(str)
@@ -122,10 +123,10 @@ def run(start='20200101',end='20250822'):
     factor2.drop(columns='vol_entropy',inplace=True)
     return factor1,factor2
 
-def update(today='20250822'):
+def update(today='20250822',lay_back=-70):
     if os.path.exists(os.path.join(DataPath.save_path_update,'entropy_adjust_mean20.feather')):
         old=feather.read_dataframe(os.path.join(DataPath.save_path_update,'entropy_adjust_mean20.feather'))
-        new_start=sorted(old.DATE.drop_duplicates().to_list())[-50]
+        new_start=sorted(old.DATE.drop_duplicates().to_list())[lay_back]
         df1,df2=run(start=new_start,end=today)
         # print('!')
         # df1,df2=run(start='20221206', end='20221206')
@@ -169,4 +170,4 @@ if __name__=='__main__':
     #         tmp = df[['DATE', 'TICKER', col]]
     #         feather.write_dataframe(tmp, os.path.join(r'C:\Users\admin\Desktop', col + '.feather'))
     # print('!')
-    update()
+    update('20250919')

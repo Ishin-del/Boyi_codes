@@ -210,7 +210,7 @@ class MSF_half(object):
         else:
             feather.write_dataframe(data, DataPath.save_path_old + f'\\SSF_v2_half{half}.feather')
             feather.write_dataframe(data,DataPath.save_path_update + f'\\SSF_v2_half{half}.feather')
-            # print(data)
+            print(data)
         print(f'SSF_v2_half{half} has been saved')
         print(np.setdiff1d(data.columns, ['TICKER', 'DATE']), sorted(data['DATE'].unique())[-1])
 
@@ -219,8 +219,8 @@ class MSF_half(object):
         df=self.cal_MSF_half()
         return df
 
-def update(today='20250822'):
-    MSF_object = MSF_half(start='20250601', end=today,savepath=DataPath.save_path_update)
+def update(today='20250905'):
+    MSF_object = MSF_half(start='20200101', end=today,savepath=DataPath.save_path_update)
     MSF_object.run()
 
 
