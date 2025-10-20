@@ -152,16 +152,18 @@ def gen_fear_factor(df):
     df['tree_soldier'] = df['fear_adj'] * df['volatility'] * df['indivi_ratio']
     df.sort_values(['TICKER', 'DATE'], inplace=True)
     df=process_na_value(df)
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df['tree_soldier_ret'] = df.groupby('TICKER')['tree_soldier'].apply(
         lambda x: x.rolling(window=20, min_periods=5).mean()).values
     df['tree_soldier_vol'] = df.groupby('TICKER')['tree_soldier'].apply(
         lambda x: x.rolling(window=20, min_periods=5).std()).values
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df['fear_idvi_fac'] = (df['tree_soldier_ret'] + df['tree_soldier_vol']) / 2
     df = df.groupby('TICKER').apply(get_rank,50).reset_index(drop=True)
+    # print(np.isinf(df).any().any())
     df1 = df[['TICKER', 'DATE', 'tree_soldier_ret']]
     df2 = df[['TICKER', 'DATE', 'tree_soldier_vol']]
     df3 = df[['TICKER', 'DATE', 'fear_idvi_fac']]
-    # todo:
     # feather.write_dataframe(df,os.path.join(r'C:\Users\admin\Desktop\test.feather'))
     return df1, df2, df3
 
@@ -172,15 +174,13 @@ def update(today='20250904'):
     while flag:
         if os.path.exists(os.path.join(save_path_update, 'tree_soldier_ret.feather')):
             old_df = feather.read_dataframe(os.path.join(save_path_update, 'tree_soldier_ret.feather'))
-            old_date_list = old_df.DATE.drop_duplicates().to_list()
-            old_date_list = sorted(old_date_list)
-            new_start = old_date_list[max(old_date_list.index(old_df.DATE.max()) - 80, 0)]
+            new_start = sorted(old_df.DATE.drop_duplicates().to_list())[-70]
+            # new_start='20221001'
             print('因子fear更新中:')
             df = read_data(start=new_start, end=today)  # todo: 每次更新检查，改end
             df1, df2, df3 = gen_fear_factor(df)
             for name, data in {'tree_soldier_ret': df1, 'tree_soldier_vol': df2, 'fear_idvi_fac': df3}.items():
                 old_df = feather.read_dataframe(os.path.join(save_path_update, name + '.feather'))
-
                 # test_date = old_date_list[old_date_list.index(old_df.DATE.max()) - 15:]
                 test_df = old_df.merge(data, on=['DATE', 'TICKER'], how='inner').dropna()
                 test_df.sort_values(['TICKER', 'DATE'], inplace=True)
@@ -209,7 +209,7 @@ def update(today='20250904'):
         flag = False
 
 if __name__ == '__main__':
-    update('20250905')
+    update('20251016')
     # update()
     # df = read_data(start='20200101', end='20250822')
     # df = read_data(start='20200101', end='20211231')

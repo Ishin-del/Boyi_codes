@@ -123,7 +123,7 @@ def run(start, end):
     # 重命名列
     # res = res[['DATE', 'TICKER', 'exp_LUD_act_amount']]
     res = res[['DATE', 'TICKER','Traction_LUD_trade_num']] #, 'exp_LUD_amount',
-    feather.write_dataframe(res,r'C:\Users\admin\Desktop\test\Traction_LUD_trade_num.feather')
+    # feather.write_dataframe(res,r'C:\Users\admin\Desktop\test\Traction_LUD_trade_num.feather')
     return [res]
 
 def update_muli(filename,today,run,num=-50):

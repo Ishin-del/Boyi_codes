@@ -73,8 +73,9 @@ def run(start,end):
     warnings.filterwarnings('ignore')
     # get_data('20250828')
     tar_date=get_tar_date(start,end)
-    df=Parallel(n_jobs=3)(delayed(get_data)(date) for date in tqdm(tar_date))
+    df=Parallel(n_jobs=13)(delayed(get_data)(date) for date in tqdm(tar_date))
     df=pd.concat(df).reset_index(drop=True)
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df=process_na_stock(df,col='open_buy_will_ratio')
     res = []
     for col in df.columns.tolist()[2:]:
@@ -111,6 +112,7 @@ def update_muli(filename,today,run,num=-50):
                     feather.write_dataframe(old,os.path.join(DataPath.save_path_update,col+'.feather'))
                     feather.write_dataframe(old,os.path.join(DataPath.factor_out_path,col+'.feather'))
                 else:
+                    test.columns=['DATE','TICKER','f1','f2']
                     print(test[~np.isclose(test.iloc[:,2],test.iloc[:,3])])
                     # tt=test[~np.isclose(test.iloc[:, 2], test.iloc[:, 3])]
                     # feather.write_dataframe(tt,r'C:\Users\admin\Desktop\tt.feather')
@@ -130,4 +132,4 @@ def update_muli(filename,today,run,num=-50):
                 # feather.write_dataframe(tmp,os.path.join(r'C:\Users\admin\Desktop\test',col+'.feather'))
 
 if __name__=='__main__':
-    update()
+    update('20251016')
