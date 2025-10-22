@@ -61,7 +61,7 @@ if __name__=='__main__':
     ret_df=feather.read_dataframe(r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\calc6临时用\return_因子组合用.feather')
     df=df.merge(ret_df,on=['DATE','TICKER'],how='left')
     df.sort_values(['TICKER','DATE'],inplace=True)
-    df['return']=df.groupby('TICKER')['return'].shift(1)
+    df['return']=df.groupby('TICKER')['return'].shift(-1)
     res=df.groupby('DATE').agg({'TICKER':'size','return':'mean'}).reset_index()
     dd=['20240206', '20240207', '20240208','20240926', '20240927', '20240930', '20241008']
     res=res[~res['DATE'].isin(dd)]
