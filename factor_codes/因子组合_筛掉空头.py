@@ -13,17 +13,17 @@ def tar_codes():
     # file_list.remove('SSF_v2_half10.feather')
     # file_list.remove('VaR_5%_v2.feather')
     # file_list = random.sample(file_list, 20)
-#     file_list=['close_top24_ratio_roll20.feather','ctr.feather','expand_fell_roll20.feather','fear_idvi_fac.feather',
-#                'net_midd_ratio.feather ','net_trade_ratio.feather','not_iso_num_imbalance_roll20_neutral_adjust.feather'
-# ,'num_imbalance_roll20_neutral_adjust.feather','open_buy_will_ratio_roll20.feather','open_buy_will_str_roll20.feather',
-#                'OvernightSmart20.feather','retOnNetAct_bottom_24_roll20.feather','Traction_LUD_amount.feather',
-#                'Traction_LUD_trade_num.feather','tree_soldier_ret.feather','tree_soldier_vol.feather',
-#     'turnTail4Sum_ratio.feather','vol_bottom24_ratio_roll20.feather ','有效100s卖出额_roll20.feather','随波逐流.feather']
-    file_list=['close_top24_ratio_roll20.feather','net_midd_ratio.feather','net_trade_ratio.feather',
-               'Traction_LUD_amount.feather','Traction_LUD_trade_num.feather','vol_bottom24_ratio_roll20.feather',
-               '随波逐流.feather']
-    bt_path=r'\\Desktop-79nue61\因子测试结果\田逸心\原因子增量回测20-21'
-    start='20220101'
+    file_list=['close_top24_ratio_roll20.feather','ctr.feather','expand_fell_roll20.feather','fear_idvi_fac.feather',
+               'net_midd_ratio.feather ','net_trade_ratio.feather','not_iso_num_imbalance_roll20_neutral_adjust.feather'
+,'num_imbalance_roll20_neutral_adjust.feather','open_buy_will_ratio_roll20.feather','open_buy_will_str_roll20.feather',
+               'OvernightSmart20.feather','retOnNetAct_bottom_24_roll20.feather','Traction_LUD_amount.feather',
+               'Traction_LUD_trade_num.feather','tree_soldier_ret.feather','tree_soldier_vol.feather',
+    'turnTail4Sum_ratio.feather','vol_bottom24_ratio_roll20.feather ','有效100s卖出额_roll20.feather','随波逐流.feather']
+#     file_list=['close_top24_ratio_roll20.feather','net_midd_ratio.feather','net_trade_ratio.feather',
+#                'Traction_LUD_amount.feather','Traction_LUD_trade_num.feather','vol_bottom24_ratio_roll20.feather',
+#                '随波逐流.feather']
+    bt_path=r'\\Desktop-79nue61\因子测试结果\田逸心\原因子增量回测22-24'
+    start='20240101'
     end='20250901'
     pos_factors_list =[]
     neg_factors_list =[]
@@ -60,9 +60,12 @@ if __name__=='__main__':
         df['DATE']=df['DATE'].astype(str)
     ret_df=feather.read_dataframe(r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\calc6临时用\return_因子组合用.feather')
     df=df.merge(ret_df,on=['DATE','TICKER'],how='left')
+    df.sort_values(['TICKER','DATE'],inplace=True)
+    df['return']=df.groupby('TICKER')['return'].shift(1)
     res=df.groupby('DATE').agg({'TICKER':'size','return':'mean'}).reset_index()
     dd=['20240206', '20240207', '20240208','20240926', '20240927', '20240930', '20241008']
     res=res[~res['DATE'].isin(dd)]
     print(res)
+    print(res['return'].mean())
     # feather.write_dataframe(res,r'C:\Users\admin\Desktop\res.feather')
     res.to_csv(r'C:\Users\admin\Desktop\res.csv')
