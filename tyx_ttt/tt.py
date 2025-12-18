@@ -102,18 +102,24 @@ class SS:
         train = pd.DataFrame(train_pred_y, index=train_y.index, columns=['pred'])
         train_res=self.group_ret(train)
         train_res['IC']=pearsonr(train_pred_y.flatten(), train_y.values.flatten())[0]
+        train_res['start_time']=train_y.reset_index(level='DATE')['DATE'].min()
+        train_res['end_time']=train_y.reset_index(level='DATE')['DATE'].max()
         # train_res['数据集']='训练集'
         # ========================================================================
         valid_pred_y = model.predict(valid_x)
         valid = pd.DataFrame(valid_pred_y, index=valid_y.index, columns=['pred'])
         valid_res=self.group_ret(valid)
         valid_res['IC']=pearsonr(valid_pred_y.flatten(), valid_y.values.flatten())[0]
+        valid_res['start_time']=valid_y.reset_index(level='DATE')['DATE'].min()
+        valid_res['end_time']=valid_y.reset_index(level='DATE')['DATE'].max()
         # valid_res['数据集']='验证集'
         # ========================================================================
         test_pred_y = model.predict(test_x)
         test = pd.DataFrame(test_pred_y, index=test_y.index, columns=['pred'])
         test_res=self.group_ret(test)
         test_res['IC']=pearsonr(test_pred_y.flatten(), test_y.values.flatten())[0]
+        test_res['start_time']=test_y.reset_index(level='DATE')['DATE'].min()
+        test_res['end_time']=test_y.reset_index(level='DATE')['DATE'].max()
         # test_res['数据集']='测试集'
         res_df=pd.concat([train_res,valid_res,test_res]).reset_index(drop=True).T
         res_df.columns=['训练集', '验证集', '测试集']
@@ -152,11 +158,9 @@ todo:
 如果预测值达到标准，则开仓
 卖出不在标的池的仓位
 （注意仓位止盈，止损）
-# ----------------------------
-累计收益，年化收益，最大回撤
 '''
 
 if __name__=='__main__':
-    obj=SS()
+    obj=SS(start='20220101', end='20251031')
     obj.sss()
 
