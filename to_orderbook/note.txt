@@ -1,0 +1,134 @@
+'''
+09:15-09:20  可挂单，可撤单; 09:20-09:25  可挂单，不可撤单;09:25-09:30  交易所已产生开盘价，但仍接受挂单/撤单，只是不撮合，这些单子会在09:30:00瞬间进入连续竞价队列。
+09:15-09:25 才是真正的“集合竞价撮合时段”，每3秒做一次虚拟撮合试算（你能看到虚拟匹配量、虚拟价格，但不会产生真实成交，直到09:25最后一次试算定出开盘价）。
+09:25-09:30 是“静默缓冲”，订单簿已经定格在开盘价，但投资者还能改单，只是改完的单子要等到09:30才生效。
+--------------------------------------------------------------------
+尾盘集合竞价（深市、创业板、科创板才有）
+14:57-15:00  可挂单，不可撤单，每3秒试算一次，15:00最后一次试算产生收盘价。
+沪市主板没有尾盘集合竞价，最后一小时仍是连续竞价。
+--------------------------------------------------------------------
+集合竞价是为了：
+价格发现：用最大成交量的单一价格一次性把隔夜/午休累积的供需平衡掉，避免连续竞价开盘瞬间巨幅波动。
+降低操纵：09:20-09:25 不可撤单，减少“虚假挂单+最后一刻撤单”的操纵空间。
+流动性集中：所有单子在统一价格点成交，提高开盘/收盘的流动性深度。
+--------------------------------------------------------------------
+代码逻辑暂定：
+先选取9：15至9：25的order数据拉出来得到bid和offer生成一个order_book，然后将offer里的价格，bid里的价格，昨收，涨停，跌停等，
+去重后得到个price_list，从中选出能使成交量最大的p,根据这个p减去能成交的bid和offer的成交量，
+这个更新过后的order_book，就是连续竞价开局的order_book了
+'''
+
+'''
+------------------------------------order数据处理方式------------------------------------
+OrdType:
+限价单OrderType=2,加入同price的队尾；
+本方最优单OrderType=U,加入买一/卖一的队尾；
+市价单OrderType=1，因为是立刻成交所以不出现在订单簿，但对qty有改变。（相当于是买一/卖一的队头）【因为立即成交了，所以数量改变在对手方】
+
+本方最优单这种类型的单子，如果没有找到可以挂靠的pricelevel,那么交易所就会自动将这个报单做撤单处理。（没有买一卖一的话，直接撤销该单）
+不用担心市价单独的pricelevel会挂了很多未完全成交的活跃市价单,实际上这个pricelevel永远都只可能最多有一笔报单挂在上面.
+
+------------------------------------trade数据处理方式------------------------------------
+把撤单对原始单的影响也看成是一种特殊的成交,就是未成交数量减少了,直接减到了0
+实际剩余未成交数量为0后(包括撤单),把order从pricelevel上删除,如果pricelevel上也恰好没有任何其他报单,那就将pricelevel从orderbook上删除
+
+已成交的价格，对应直接减少qty
+===================================================================
+订单簿数据，只包含未成交的活订单，成交数据仅用于减少订单量（价格不直接出现在订单簿）
+'''
+
+def update_data(order_book,label,r):
+    # 处理order数据
+    price, qty, side, ord_type = r.Price, r.OrderQty, int(r.Side), str(r.OrderType)
+    try:
+        if ord_type=='U':
+            idx=0
+        elif ord_type=='2':
+            idx=order_book[label][f'{label}_price'].index(price)
+        elif ord_type=='1':
+            order_book=process_mkt_price(r, label, qty, price, order_book)
+            return order_book #完成直接返回，不往下走了，运算完成了
+        # if ord_type=='1':
+        #     order_book[label][f'{label}_qty'][idx] = max(0,order_book[label][f'{label}_qty'][idx]-qty)
+        # # --------------------------------------------------------------------------
+        # else:
+        order_book[label][f'{label}_qty'][idx] += qty
+        order_book[label][f'{label}_num'][idx].extend([r.ApplSeqNum])
+    except ValueError:
+        if ord_type in ('1','U'):
+            return order_book
+        order_book[label][f'{label}_price'].append(price)
+        order_book[label][f'{label}_qty'].append(qty)
+        order_book[label][f'{label}_num'].append([r.ApplSeqNum])
+    order_book=sort_dict(order_book, label)
+    return order_book
+
+def process_mkt_price(r,label,qty,price,order_book):
+    # -------------------------trade处理逻辑 - ------------------------
+    oppo_label = 'bid' if label == 'offer' else 'offer'
+    remain_qty = qty
+    try:
+        idx = 0 if not order_book[oppo_label][f'{oppo_label}_price'] else order_book[oppo_label][
+            f'{oppo_label}_price'].index(price)
+    except ValueError:
+        print()
+    while remain_qty > 0 and order_book[oppo_label][f'{oppo_label}_price']:
+        # idx=0
+        order_book[oppo_label][f'{oppo_label}_num'][idx].extend([r.ApplSeqNum])
+        # curr_p=order_book[label][f'{oppo_label}_price'][idx]
+        curr_q = order_book[oppo_label][f'{oppo_label}_qty'][idx]
+        trading_qty = min(remain_qty, curr_q)  # 本次可以成交数量，如果要成交量小的话，直接买/卖完，否则交易完后，剩余的还要找合适的价格进行成交
+        order_book[oppo_label][f'{oppo_label}_qty'][idx] -= trading_qty
+        remain_qty -= trading_qty  # 剩余待成交的量，小于0，跳出while；大于0，继续寻找最好成交价格
+        if order_book[oppo_label][f'{oppo_label}_qty'][idx] <= 0:
+            for key in [f'{oppo_label}_price', f'{oppo_label}_qty', f'{oppo_label}_num']:
+                del order_book[oppo_label][key][idx]
+            idx-=1
+        idx+=1
+        # order_book = sort_dict(order_book, oppo_label)
+    return order_book
+
+def count_elements(nested_list):
+    count = 0
+    for element in nested_list:
+        if isinstance(element, list):  # 如果是列表，递归计算
+            count += count_elements(element)
+        else:  # 如果是单个元素，计数加1
+            count += 1
+    return count
+
+
+
+import pandas as pd
+
+def cal(x,l):
+    x=x.reset_index(drop=True)
+    if x[l+'OrderNo'].iloc[0]==0: #
+        return
+    position=x[x.Type=='A'].index
+    if position.empty:
+        qty=x.Qty.sum()
+        p = x.Price.max() if l=='Buy' else x.Price.min()
+        trade_type,order_type='F','nan' #成交
+    else:
+        qty=x.loc[:position[-1]].Qty.sum()
+        p = x[x.Type=='A'].Price.iloc[0]
+        trade_type,order_type='nan','2'
+    t=int(str(x.TickTime.iloc[0])[:10])
+    return pd.Series([qty,p,t,trade_type,order_type])
+
+
+if __name__=='__main__':
+    df = pd.read_feather(r'C:\Users\Administrator\Desktop\临时用\临时用\stock_tick\600000.feather')
+    df = df[(df.Type == 'T') | (df.Type == 'A')]
+    tmp_df=df[df.Type=='D'] # todo:concat到后面
+    tmp_df['ExecType']='4'
+    tmp_df['OrderType']='nan'
+    for label in ['BuyOrderNo','SellOrderNo']:
+        tmp=df.groupby([label], as_index=False).apply(lambda x: cal(x, l=label[:3]))
+        tmp.rename(columns={label: 'seqnum',0: 'qty', 1: 'Price', 2: 'OrigTime',3:'TradeQty',4:'OrderQty'},inplace=True)
+        """
+        OrigTime是上海数据中的TickTime
+        """
+        tmp['side']=label[:3]
+        df=pd.concat([tmp_df, tmp]).dropna(axis=0)

@@ -59,8 +59,6 @@ class Factor_CTR:
         self.daily = self.daily[self.daily['DATE'] >= self.time_start]
         self.daily=self.daily.merge(adj_df,on=['TICKER', 'DATE'],how='left')
 
-
-
     def __concat_data(self):
         '''因为文件太大，读数据会有点慢'''
         path = [os.listdir(DataPath.feather_sh), os.listdir(DataPath.feather_sz)]
@@ -84,7 +82,7 @@ class Factor_CTR:
         self.total_share = self.total_share[self.total_share['TICKER'].isin(self.tickerpool['TICKER'])]
         self.daily = self.daily[self.daily['TICKER'].isin(self.tickerpool['TICKER'])]
         self.daily = self.daily.merge(self.total_share, on=['DATE', 'TICKER'], how='left')[
-            ['DATE', 'TICKER', 'open', 'close', 'volume', 'total_share']]
+            ['DATE', 'TICKER', 'open', 'close', 'volume', 'total_share','adj_factors']]
 
         self.daily['close']*=self.daily['adj_factors']
         self.daily['open']*=self.daily['adj_factors']
@@ -128,34 +126,36 @@ class Factor_CTR:
         self.daily['pre_turnover'] = self.daily.groupby('TICKER')['turnover'].shift(1).values  # 昨日换手率
         tar_date_list = sorted(list(self.daily.DATE.drop_duplicates()))
         # if label=='': # 成交量对动量因子的修正：日内切割 1
-        df1 = self.cal(main_label='intra_ret', help_label='turnover',
-                       cols=['intra_cut_1', 'intra_cut_2', 'intra_cut_3', 'intra_cut_4', 'intra_cut_5'])
-        df1.to_csv(os.path.join(DataPath.save_path, 'check1.csv'))
+        # df1 = self.cal(main_label='intra_ret', help_label='turnover',
+        #                cols=['intra_cut_1', 'intra_cut_2', 'intra_cut_3', 'intra_cut_4', 'intra_cut_5'])
+        # df1.to_csv(os.path.join(DataPath.save_path, 'check1.csv'))
 
         # elif label=='n': # 成交量对动量因子的修正：隔夜切割 2
-        df2 = self.cal(main_label='night_ret', help_label='pre_turnover',
-                       cols=['night_cut_1', 'night_cut_2', 'night_cut_3', 'night_cut_4', 'night_cut_5'])
-        df2.to_csv(os.path.join(DataPath.save_path, 'check2.csv'))
+        # df2 = self.cal(main_label='night_ret', help_label='pre_turnover',
+        #                cols=['night_cut_1', 'night_cut_2', 'night_cut_3', 'night_cut_4', 'night_cut_5'])
+        # df2.to_csv(os.path.join(DataPath.save_path, 'check2.csv'))
 
         # elif label=='tr': # 换手率对异质信念的识别：日内收益率的辅助 3
-        df3 = self.cal(main_label='turnover', help_label='intra_ret',
-                       cols=['intra_help_1', 'intra_help_2', 'intra_help_3', 'intra_help_4', 'intra_help_5'])
-        df3.to_csv(os.path.join(DataPath.save_path, 'check3.csv'))
+        # df3 = self.cal(main_label='turnover', help_label='intra_ret',
+        #                cols=['intra_help_1', 'intra_help_2', 'intra_help_3', 'intra_help_4', 'intra_help_5'])
+        # df3.to_csv(os.path.join(DataPath.save_path, 'check3.csv'))
 
         # elif label=='tr_n': # 换手率对异质信念的识别：次日隔夜收益率的辅助 4
-        df4 = self.cal(main_label='turnover', help_label='night_ret',
-                       cols=['night_help_1', 'night_help_2', 'night_help_3', 'night_help_4', 'night_help_5'])
-        df4.to_csv(os.path.join(DataPath.save_path, 'check4.csv'))
+        # df4 = self.cal(main_label='turnover', help_label='night_ret',
+        #                cols=['night_help_1', 'night_help_2', 'night_help_3', 'night_help_4', 'night_help_5'])
+        # df4.to_csv(os.path.join(DataPath.save_path, 'check4.csv'))
 
         # elif label=='tr_o': #换手率对异质信念的识别：次日隔夜换手率的辅助 5
-        df5 = self.cal(main_label='overnight_turn', help_label='night_ret',
-                       cols=['night_turn_1', 'night_turn_2', 'night_turn_3', 'night_turn_4', 'night_turn_5'])
-        df5.to_csv(os.path.join(DataPath.save_path, 'check5.csv'))
+        # df5 = self.cal(main_label='overnight_turn', help_label='night_ret',
+        #                cols=['night_turn_1', 'night_turn_2', 'night_turn_3', 'night_turn_4', 'night_turn_5'])
+        # df5.to_csv(os.path.join(DataPath.save_path, 'check5.csv'))
 
         # elif label=='smart':# 隔夜聪明钱 6
         self.daily['smart_tmp'] = self.daily.groupby('TICKER')['night_ret'].transform(
             lambda x: (x - x.min()) / (x.max() - x.min()))
         self.daily['over_night_smart'] = self.daily['smart_tmp'] / self.daily['overnight_turn']
+        self.daily.sort_values(['TICKER','DATE'],inplace=True)
+        self.daily['OvernightSmart20']=self.daily.groupby('TICKER')['over_night_smart'].rolling(window=20,min_periods=10).mean().values
         df6 = self.daily[['TICKER', 'DATE', 'over_night_smart']]
         df6.to_csv(os.path.join(DataPath.save_path, 'check6.csv'))
 
