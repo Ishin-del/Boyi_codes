@@ -1,0 +1,23 @@
+# total_res = []
+# with ProcessPoolExecutor(max_workers=10) as executor:
+#     future_to_code = {executor.submit(get_code, date, code): code for code in tqdm(tar_codes)}
+#     for future in as_completed(future_to_code):
+#         total_res.append(future.result())
+# total_res=[x for x in total_res if x!=None]
+# df=pd.DataFrame(list(chain.from_iterable(total_res)))
+
+
+tmp_trade = dt[dt['ApplSeqNum'] > row['ApplSeqNum']]
+# 看相应时间段内的撤单量的总和是多少
+cancel_order = tmp_trade[tmp_trade['ExecType'] == '4']  # tmp_trade是取出来的之后5秒区间内的逐笔成交数据
+cancel_order['ApplSeqNum'] = np.maximum(tmp_trade['BidApplSeqNum'], tmp_trade['OfferApplSeqNum'])
+cancel_order = cancel_order.groupby('ApplSeqNum').agg({'TradeQty':'sum'}).reset_index()
+# 用时间直接对逐笔委托数据做截断
+in_order = order_dt.merge(cancel_order[['ApplSeqNum', 'TradeQty']], on=['ApplSeqNum'],how='left')  # 把撤单数据拼过来
+in_order['TradeQty']=in_order['TradeQty'].replace(np.nan,0)
+in_order['OrderQty_noCancel'] = in_order['OrderQty'] - in_order['TradeQty'] # 减去测单量
+in_order.sort_values(by='ApplSeqNum', inplace=True)
+# 取出三个相应的列表结果
+app_list = in_order['ApplSeqNum'].tolist()
+price_list = in_order['Price'].tolist()
+orderqty_list = in_order['OrderQty_noCancel'].tolist()

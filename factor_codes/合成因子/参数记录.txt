@@ -1,0 +1,2 @@
+path=r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\calc6临时用\rolling_generation_202508_sz_auction_end_20240815_909_big_order\train'
+最好模型&参数:tree_clf=AdaBoostRegressor(DecisionTreeRegressor(max_depth=100,random_state=234),n_estimators=100,random_state=123) #0.054

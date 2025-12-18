@@ -571,9 +571,9 @@ if __name__ == '__main__':
     # data_path = r'U:\local_data\Data_Storage'
 
     split_output = False
-    factor_path = r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\原始数据\拟使用量价因子'
-    # factor_path =r'C:\Users\admin\Desktop\test'
-    # factor_path =r'C:\Users\admin\Desktop\t2'
+    # factor_path = r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\原始数据\拟使用量价因子'
+    factor_path =r'C:\Users\admin\Desktop\test'
+    # factor_path =r'C:\Users\admin\Desktop\tt'
     out_put_path = r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\中性化数据\拟使用量价因子'
     data_path = r'Z:\local_data\Data_Storage'
 
@@ -597,7 +597,7 @@ if __name__ == '__main__':
                 factor_name_list = df_original_data.columns.drop(['TICKER', 'DATE']).to_list()
 
             # 生成中性化class的实例
-            processor = ProcessFactor(data_path=data_path, factor_list=factor_name_list,start='20200101',end='20250905')
+            processor = ProcessFactor(data_path=data_path, factor_list=factor_name_list,start='20200101',end='20251103')
             # 加载数据，添加columns 行业、市值
             df_whole = processor.load_data(df_original_data)
 
@@ -617,4 +617,4 @@ if __name__ == '__main__':
             print(file_name)
 
     # os.makedirs(r'\\192.168.1.210\Factor_Storage\周楷贺\中性化完成标识\20250822',exist_ok=True)
-    os.makedirs(r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\更新完成标识\中性化完成标识\20250905',exist_ok=True)
+    # os.makedirs(r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\更新完成标识\中性化完成标识\20250905',exist_ok=True)

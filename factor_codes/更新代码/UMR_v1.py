@@ -62,10 +62,12 @@ def run(start,end):
     daily_df=feather.read_dataframe(DataPath.daily_path)
     daily_df.sort_values(['TICKER','DATE'],inplace=True)
     daily_df['daily_ret']=daily_df.groupby('TICKER')['close'].pct_change()
+    daily_df.replace([np.inf, -np.inf], np.nan, inplace=True)
     daily_df=daily_df[(daily_df['DATE']>=start)&(daily_df['DATE']<=end)]
     daily_df=daily_df[['DATE','TICKER','daily_ret']]
     # --------------
-    mkt_df=pd.read_csv(DataPath.wind_A_path)
+    # mkt_df=pd.read_csv(DataPath.wind_A_path)
+    mkt_df=pd.read_csv(r'\\DESKTOP-79NUE61\Data_Storage2\881001.WI.csv')
     mkt_df['DATE']=mkt_df['DATE'].astype(str)
     mkt_df.sort_values(['DATE'],inplace=True)
     mkt_df['mkt_ret']=mkt_df['close'].pct_change()
@@ -73,6 +75,8 @@ def run(start,end):
     # ---------------
     df=daily_df.merge(mkt_df,on='DATE',how='inner').merge(res,on=['DATE','TICKER'],how='inner')
     # df['risk_adjust']=1
+    df.replace([np.inf,-np.inf],np.nan,inplace=True)
+    df.dropna(inplace=True)
     df=process_na_stock(df,'daily_ret')
     df.sort_values(['TICKER','DATE'],inplace=True)
     df['min_ret_risk_factor']=df['min_ret_risk_adjust']*(df['daily_ret']-df['mkt_ret']) #np.abs()
@@ -86,7 +90,7 @@ def run(start,end):
     return [df]
 
 def update_muli(filename,today,run,num=-50):
-    if os.path.exists(os.path.join(DataPath.save_path_update,filename)):
+    if os.path.exists(os.path.join(DataPath.save_path_old,filename)) and False:
     # if False:
         print('因子更新中')
         old=feather.read_dataframe(os.path.join(DataPath.save_path_update,filename))
@@ -116,7 +120,7 @@ def update_muli(filename,today,run,num=-50):
                     exit()
     else:
         print('因子生成中')
-        res=run(start='20200101',end='20221231')
+        res=run(start='20200101',end=today)
         # res=run(start='20211201',end='20250801')
         # res=run(start='20250828',end='20250829')
         for df in res:
@@ -129,8 +133,8 @@ def update_muli(filename,today,run,num=-50):
 
 
 def update(today):
-    update_muli('min_ret_risk_factor_adjust.feather',today,run,-90)
+    update_muli('min_ret_risk_factor_adjust.feather',today,run,-120)
 
 if __name__=='__main__':
     # run('20250102','20250106')
-    update('20251016')
+    update('20251103')

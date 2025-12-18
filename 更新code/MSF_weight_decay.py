@@ -255,6 +255,7 @@ class MSF_half(object):
         data[f'MSF_{half}'] = (data['mean_Vol_daily'] + data['std_Vol_daily']) / 2
         data = data.reset_index(drop=True)
         data = data[['TICKER', 'DATE', f'MSF_{half}']].reset_index(drop=True)
+        data.rename(columns={f'MSF_{half}':f'MSF_half{half}'},inplace=True)
         # 将最终日期设置为22年7月底，然后把下面一行打开，然后比较重合部分(上一次减90加回溯天数，
         # 大概三个月-上一次最后一天)是否对的上
         # data.to_feather(self.savepath + f'factor\\MSF_half{half}test.feather')

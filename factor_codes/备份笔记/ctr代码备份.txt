@@ -1,0 +1,133 @@
+# tmp.sort_values(['TICKER', 'DATE'], inplace=True)
+# date_df = tmp.groupby('TICKER')['DATE'].last().reset_index()
+# tmp.sort_values(['TICKER', help_label], inplace=True)
+# tmp_res = tmp.groupby('TICKER', as_index=False)[main_label].apply(
+#     lambda x: [np.mean(x.iloc[i:i + 4]) for i in range(0, len(x), 4)])
+# help = pd.DataFrame(tmp_res[main_label].tolist(), index=tmp_res.index)
+# tmp_res = tmp_res.merge(help, left_index=True, right_index=True).drop(columns=main_label)
+# tmp_res = tmp_res.merge(date_df, on='TICKER', how='left')
+# tmp_res.columns = ['TICKER'] + cols + ['DATE']
+
+
+# this_use = self.daily[['TICKER','DATE','intra_ret','turnover']]
+# pt_help = pd.pivot_table(this_use,columns=['TICKER'],index=['DATE'],values='turnover')
+# pt_main = pd.pivot_table(this_use,columns=['TICKER'],index=['DATE'],values='intra_ret')
+# for i in tqdm(range(len(pt_help)-20+1)):
+#     nowhelp = pt_help.iloc[i:i+20,:]
+#     nowmain = pt_main.iloc[i:i+20,:]
+#
+#     nowhelp = nowhelp.dropna(axis=1)
+#     nowmain = nowmain.dropna(axis=1)
+#     int_tic = list(np.intersect1d(nowhelp.columns,nowmain.columns))
+#     nowhelp = nowhelp[int_tic]
+#     nowmain = nowmain[int_tic]
+#     usedate = nowmain.index.max()
+#     rk = nowhelp.rank(axis=0)
+#     rk = rk-1
+#     rk = rk//4 + 1
+#
+#     res = pd.DataFrame()
+#
+#     for g in range(1,6):
+#         rk_1 = rk == g
+#         nowmain_ = (rk_1.replace(False,np.nan)*nowmain).mean(skipna=True)
+#         nowmain_.name = f'group_{g}'
+#         nowmain_ = nowmain_.reset_index(drop=False)
+#         nowmain_['DATE'] = usedate
+#         if res.empty:
+#             res = nowmain_
+#         else:
+#             res[f'group_{g}'] = nowmain_[f'group_{g}']
+# pt_help = pd.pivot_table(this_use,columns=['TICKER'],index=['DATE'],values='turnover')
+        # res = []
+        # path = [DataPath.feather_sh, DataPath.feather_sz]
+        # for p in path:
+        #     for file in tqdm(os.listdir(p)):
+        #         if file[:8] in self.tickerpool['DATE'].to_list():
+        #             tmp = feather.read_dataframe(os.path.join(p, file))
+        #             tmp=tmp[tmp['min']==930][['TICKER','volume']]
+        #             tmp['volume'] *= 100
+        #             tmp['DATE'] = file[:8]
+        #             res.append(tmp)
+        #     # break
+        # res = pd.concat(res).reset_index(drop=True)
+        # res.rename(columns={'volume':'Qty'},inplace=True)
+        # return res
+
+def cal(self, i,main_label, help_label, cols):
+    tar_date_list = sorted(list(self.daily.DATE.drop_duplicates()))
+    tmp_date_list = tar_date_list[i:i + self.rolling_window]
+    tmp = self.daily[self.daily.DATE.isin(tmp_date_list)][['DATE', 'TICKER', help_label, main_label]]
+    tmp=tmp.groupby('TICKER').filter(lambda x: len(x) >= 20)
+    date_df = tmp.sort_values(['TICKER', 'DATE']).groupby('TICKER', as_index=False)['DATE'].last()
+    tmp = tmp.sort_values(['TICKER', help_label]).copy()
+    tmp['chunk'] = tmp.groupby('TICKER').cumcount() // 4 # 将同意股票序列数据分为4组
+    agg = tmp.groupby(['TICKER', 'chunk'], as_index=False)[main_label].mean() #根据股票代码和分组计算均值
+    wide = agg.pivot(index='TICKER', columns='chunk', values=main_label).sort_index(axis=1) # 将数据根据分组列分为5列
+    wide.columns = cols
+    tmp_res_new = wide.reset_index().merge(date_df, on='TICKER', how='left')
+    final_cols = ['TICKER'] + list(wide.columns) + ['DATE']
+    tmp_res_new = tmp_res_new[final_cols]
+    return tmp_res_new
+
+
+       # tar_date_list = sorted(list(self.daily.DATE.drop_duplicates()))
+        # if label=='': # 成交量对动量因子的修正：日内切割 1
+
+        df1=Parallel(n_jobs=13)(delayed(self.cal)(i,main_label='intra_ret', help_label='turnover',
+                       cols=['intra_cut_1', 'intra_cut_2', 'intra_cut_3', 'intra_cut_4', 'intra_cut_5']) for i in tqdm(tmp_date_list))
+        df1=pd.concat(df1).reset_index(drop=True)
+        for c in ['intra_cut_1', 'intra_cut_2', 'intra_cut_3', 'intra_cut_4', 'intra_cut_5']:
+            df1[['DATE','TICKER',c]].to_feather(os.path.join(DataPath.save_path, f'{c}.feather'))
+
+
+        # elif label=='n': # 成交量对动量因子的修正：隔夜切割 2
+        df2 =Parallel(n_jobs=13)(delayed(self.cal)(i,main_label='night_ret', help_label='pre_turnover',
+                       cols=['night_cut_1', 'night_cut_2', 'night_cut_3', 'night_cut_4', 'night_cut_5']) for i in range(len(tar_date_list) - self.rolling_window + 1))
+        df2=pd.concat(df2).reset_index(drop=True)
+        for c in ['night_cut_1', 'night_cut_2', 'night_cut_3', 'night_cut_4', 'night_cut_5']:
+            df2[['DATE','TICKER',c]].to_feather(os.path.join(DataPath.save_path, f'{c}.feather'))
+
+        # elif label=='tr': # 换手率对异质信念的识别：日内收益率的辅助 3
+        df3 = Parallel(n_jobs=13)(delayed(self.cal)(i,main_label='turnover', help_label='intra_ret',
+                       cols=['intra_help_1', 'intra_help_2', 'intra_help_3', 'intra_help_4', 'intra_help_5']) for i in range(len(tar_date_list) - self.rolling_window + 1))
+        df3 = pd.concat(df3).reset_index(drop=True)
+        for c in ['intra_help_1', 'intra_help_2', 'intra_help_3', 'intra_help_4', 'intra_help_5']:
+            df3[['DATE','TICKER',c]].to_feather(os.path.join(DataPath.save_path, f'{c}.feather'))
+
+        # elif label=='tr_n': # 换手率对异质信念的识别：次日隔夜收益率的辅助 4
+        df4 = Parallel(n_jobs=13)(delayed(self.cal)(i,main_label='turnover', help_label='night_ret',
+                       cols=['night_help_1', 'night_help_2', 'night_help_3', 'night_help_4', 'night_help_5']) for i in range(len(tar_date_list) - self.rolling_window + 1))
+        df4 = pd.concat(df4).reset_index(drop=True)
+        for c in ['night_help_1', 'night_help_2', 'night_help_3', 'night_help_4', 'night_help_5']:
+            df4[['DATE','TICKER',c]].to_feather(os.path.join(DataPath.save_path, f'{c}.feather'))
+
+        # elif label=='tr_o': #换手率对异质信念的识别：次日隔夜换手率的辅助 5
+        df5 = Parallel(n_jobs=13)(delayed(self.cal)(i,main_label='overnight_turn', help_label='night_ret',
+                       cols=['night_turn_1', 'night_turn_2', 'night_turn_3', 'night_turn_4', 'night_turn_5']) for i in range(len(tar_date_list) - self.rolling_window + 1))
+        df5=pd.concat(df5).reset_index(drop=True)
+        for c in ['night_turn_1', 'night_turn_2', 'night_turn_3', 'night_turn_4', 'night_turn_5']:
+            df5[['DATE','TICKER',c]].to_feather(os.path.join(DataPath.save_path, f'{c}.feather'))
+
+        # df7 = Parallel(n_jobs=13)(delayed(self.cal)(i,main_label='turnover', help_label='pre_over_night_smart',
+        #                cols=['smart_help_1', 'smart_help_2', 'smart_help_3', 'smart_help_4', 'smart_help_5']) for i in range(len(tar_date_list) - self.rolling_window + 1))
+        # df7=pd.concat(df7).reset_index(drop=True)
+        # for c in ['smart_help_1', 'smart_help_2', 'smart_help_3', 'smart_help_4', 'smart_help_5']:
+        #     df7[['DATE','TICKER',c]].to_feather(os.path.join(DataPath.save_path, f'{c}.feather'))
+
+
+def helper(date, sh_path=DataPath.sh_min, sz_path=DataPath.sz_min):
+    try:
+        sh_data = feather.read_dataframe(os.path.join(sh_path, f'{date}.feather'))
+        sz_data = feather.read_dataframe(os.path.join(sz_path, f'{date}.feather'))
+    except FileNotFoundError:
+        return
+    tmp_sh = sh_data[sh_data['min'] == 930][['TICKER', 'volume']]
+    tmp_sh['volume'] *= 100
+    tmp_sh.columns = ['TICKER', 'Qty']
+    tmp_sh['DATE'] = date
+    tmp_sz = sz_data[sz_data['min'] == 930][['TICKER', 'volume']]
+    tmp_sz['volume'] *= 100
+    tmp_sz.columns = ['TICKER', 'Qty']
+    tmp_sz['DATE'] = date
+    return pd.concat([tmp_sh, tmp_sz])

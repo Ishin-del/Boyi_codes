@@ -99,6 +99,7 @@ def run(start, end):
     res=pd.concat(res).reset_index(drop=True)
     mkt_df=feather.read_dataframe(os.path.join(DataPath.to_df_path,'float_mv.feather')) #市值数据
     citic_df=feather.read_dataframe(os.path.join(DataPath.to_df_path,'citic_code.feather')) #行业数据
+    citic_df.rename(columns={'CITIC_CODE':'citic_code'},inplace=True)
     res=res.merge(mkt_df,on=['DATE','TICKER'],how='inner').merge(citic_df,on=['DATE','TICKER'],how='inner')
     res.dropna(inplace=True)
     # 做截面反转、市值、行业中性化
@@ -140,19 +141,20 @@ def update_muli(filename,today,run,num=-50):
         print('因子生成中')
         # res=run(start='20200101',end='20221231')
         # res=run(start='20201101',end='20221231')
-        res=run(start='20200101',end='20251009')
+        res=run(start='20200101',end='20251021')
         # res=run(start='20250828',end='20250829')
         for df in res:
             for col in df.columns[2:]:
                 tmp=df[['DATE','TICKER',col]]
                 print(tmp)
-                # feather.write_dataframe(tmp,os.path.join(DataPath.save_path_old,col+'.feather'))
-                # feather.write_dataframe(tmp,os.path.join(DataPath.save_path_update,col+'.feather'))
-                feather.write_dataframe(tmp,os.path.join(r'C:\Users\admin\Desktop',col+'.feather'))
+                feather.write_dataframe(tmp,os.path.join(DataPath.save_path_old,col+'.feather'))
+                feather.write_dataframe(tmp,os.path.join(DataPath.save_path_update,col+'.feather'))
+                feather.write_dataframe(tmp, os.path.join(DataPath.factor_out_path, col + '.feather'))
+                # feather.write_dataframe(tmp,os.path.join(r'C:\Users\admin\Desktop',col+'.feather'))
 
 def update(today='20251009'):
     update_muli('Traction_LUD_amount.feather',today,run)
 
 if __name__=='__main__':
     # run('20201104','20201105')
-    update('20251010')
+    update('20251021')

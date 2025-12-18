@@ -129,13 +129,15 @@ def run(start,end):
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     # 横截面做市值中性化
     df.sort_values(['TICKER', 'DATE'], inplace=True)
-    df = process_na_stock(df, col='num_imbalance')
 
+    df.replace([np.inf,-np.inf],np.nan,inplace=True)
+    df = process_na_stock(df, col='num_imbalance')
     for col in ['num_imbalance','iso_num_imbalance','not_iso_num_imbalance']:
         df[col + '_roll20'] = df.groupby('TICKER')[col].rolling(20, 5).mean().values
     # 删nan值
-    df.dropna(inplace=True,how='any',axis=0)
+    df.replace([np.inf,-np.inf],np.nan,inplace=True)
     df = process_na_stock(df, col='num_imbalance')
+    df.dropna(inplace=True, how='any', axis=0)
     for col in ['num_imbalance','iso_num_imbalance','not_iso_num_imbalance']:
         df = neutralize_factor(df, col + '_roll20', 'float_mv')
     # 拉取每日close,计算ret
@@ -150,9 +152,9 @@ def run(start,end):
     df = df.merge(tmp[['TICKER', 'DATE', 'ret_roll20']], on=['DATE', 'TICKER'], how='left')
     # 累计涨跌幅与因子做正交
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    # df = process_na_stock(df, col='num_imbalance')
-    df.dropna(inplace=True, axis=0, how='any')
+
     df=process_na_stock(df,'num_imbalance_roll20_neutral')
+    df.dropna(inplace=True, axis=0, how='any')
     for col in ['num_imbalance_roll20_neutral', 'iso_num_imbalance_roll20_neutral','not_iso_num_imbalance_roll20_neutral']:
         # tmp = df[['DATE', 'TICKER', col, 'ret_roll20']]
         # df[col + '_adjust'] = tmp.groupby('DATE').apply(lambda x: orth(x[[col, 'ret_roll20']])).T.values
@@ -180,16 +182,16 @@ def run(start,end):
     return [df]
 
 def update(today='20250929'):
-    update_muli('not_iso_num_imbalance_roll20_neutral_adjust.feather',today,run)
+    update_muli('not_iso_num_imbalance_roll20_neutral_adjust.feather',today,run,num=-120)
 
-def update_muli(filename,today,run,num=-50):
-    if os.path.exists(os.path.join(DataPath.save_path_update,filename)):
+def update_muli(filename,today,run,num=-70):
+    if os.path.exists(os.path.join(DataPath.save_path_update,filename)) and False: # and False
     # if False:
         print('因子更新中')
         old=feather.read_dataframe(os.path.join(DataPath.save_path_update,filename))
         # new_start=sorted(old.DATE.drop_duplicates().to_list())[num]
         # print(new_start)
-        new_start='20221024'
+        new_start='20221001'
         res=run(start=new_start,end=today)
         for df in res:
             for col in df.columns[2:]:
@@ -216,8 +218,8 @@ def update_muli(filename,today,run,num=-50):
                     exit()
     else:
         print('因子生成中')
-        res=run(start='20200101',end='20221231')
-        # res=run(start='20200101',end='20250822')
+        # res=run(start='20200101',end='20221231')
+        res=run(start='20200101',end=today)
         # res=run(start='20250828',end='20250829')
         for df in res:
             for col in df.columns[2:]:
@@ -225,6 +227,7 @@ def update_muli(filename,today,run,num=-50):
                 print(tmp)
                 feather.write_dataframe(tmp,os.path.join(DataPath.save_path_old,col+'.feather'))
                 feather.write_dataframe(tmp,os.path.join(DataPath.save_path_update,col+'.feather'))
+                # feather.write_dataframe(tmp, os.path.join(DataPath.factor_out_path, col + '.feather'))
                 # feather.write_dataframe(tmp,os.path.join(r'C:\Users\admin\Desktop\test',col+'.feather'))
 
 
@@ -235,4 +238,4 @@ if __name__=='__main__':
     # # get_tick_data('20250828')
     # t2=time.time()
     # print(t2-t1)
-    update('20251009')
+    update('20251023')

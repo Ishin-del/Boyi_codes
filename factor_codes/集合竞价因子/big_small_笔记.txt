@@ -1,0 +1,31 @@
+尝试过都不行的:
+dt['big_ratio'] = dt.groupby('TICKER').apply(lambda x: x['大'] / (x['小'] + x['中'] + x['大'])).reset_index(level=0, drop=True)
+dt['med_ratio'] = dt.groupby('TICKER').apply(lambda x: x['中'] / (x['小'] + x['中'] + x['大'])).reset_index(level=0, drop=True)
+dt['small_ratio'] = dt.groupby('TICKER').apply(lambda x: x['小'] / (x['小'] + x['中'] + x['大'])).reset_index(level=0, drop=True)
+dt['big_dominance'] = dt['big_ratio'] - dt['med_ratio'] - dt['small_ratio']
+dt['big_inflow_effe']=dt['主动净流入额']/(dt['大']+1e-10)
+dt.sort_values(['TICKER','time'],inplace=True)
+dt['主动净流入pct']=dt.groupby('TICKER')['主动净流入额'].pct_change()
+dt['大小单_diff']=dt['大']-dt['小']
+dt['order_diff_pct']=dt['大小单_diff'].pct_change()
+
+res=dt.groupby('TICKER')[['主动净流入额','big_ratio', 'med_ratio','small_ratio','big_dominance','big_inflow_effe']].std()
+res.columns=['net_flow_std','big_ratio_std', 'med_ratio_std','small_ratio_std','big_dominance_std','big_inflow_effe_std']
+res1=dt.groupby('TICKER')[['big_ratio', 'med_ratio','small_ratio','big_dominance','big_inflow_effe']].mean()
+res1.columns=['net_flow_mean','big_ratio_mean', 'med_ratio_mean','small_ratio_mean','big_dominance_mean','big_inflow_effe_mean']
+res=res.merge(res1,left_index=True,right_index=True,how='outer').reset_index()
+tar_col=['net_flow','big_ratio', 'med_ratio','small_ratio','big_dominance','big_inflow_effe']
+for col in tar_col:
+    res[col+'_leftTail']=res[col+'_mean']-res[col+'_std']
+    res[col+'_rightTail']=res[col+'_mean']+res[col+'_std']
+--------------
+# todo:
+res=dt.groupby('TICKER')[['主动净流入pct','大小单_diff','order_diff_pct']].mean()
+res.columns=['主动净流入pct_mean','大小单_diff_mean','order_diff_pct_mean']
+res1=dt.groupby('TICKER')[['主动净流入pct','大小单_diff','order_diff_pct']].std()
+res1.columns=['主动净流入pct_std','大小单_diff_std','order_diff_pct_std']
+res = res.merge(res1, left_index=True, right_index=True, how='outer').reset_index()
+tar_col=['主动净流入pct','大小单_diff','order_diff_pct']
+for col in tar_col:
+    res[col+'_leftTail']=res[col+'_mean']-res[col+'_std']
+    res[col+'_rightTail']=res[col+'_mean']+res[col+'_std']

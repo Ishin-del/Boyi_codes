@@ -17,6 +17,8 @@ from tool_tyx.path_data import DataPath
 from tool_tyx.tyx_funcs import read_min_data, get_tar_date,process_na_stock
 import statsmodels.api as sm
 import warnings
+
+
 def get_data(date):
     df=read_min_data(date)
     if df.empty:
@@ -148,5 +150,5 @@ def update(today='20250929'):
     update_muli('exp_LUD.feather',today,run)
 
 if __name__=='__main__':
-    # run('20250102','20250107')
-    update()
+    run('20250102','20250107')
+    # update()

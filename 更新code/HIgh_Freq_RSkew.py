@@ -124,6 +124,7 @@ class RSkew:
 
         RSkew_daily = RSkew_daily.reset_index(level = ['TICKER', 'DATE'])
         print(RSkew_daily)
+        RSkew_daily.rename(columns={'RSkew_daily':'RSkew'},inplace=True)
         feather.write_dataframe(RSkew_daily, DataPath.save_path_update + '\\RSkew.feather')
         feather.write_dataframe(RSkew_daily, self.out_path + '\\RSkew.feather')
 

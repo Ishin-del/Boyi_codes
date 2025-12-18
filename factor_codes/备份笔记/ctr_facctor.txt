@@ -1,0 +1,199 @@
+import pandas as pd
+import os
+import warnings
+import numpy as np
+import feather
+from tqdm import tqdm
+import statsmodels.api as sm
+from joblib import Parallel,delayed
+
+# todo: 更新时，往前回滚时间长一些
+def neutralize_factor(df, factor_col, mkt_cap_col):
+    df['log_mkt'] = np.log(df[mkt_cap_col])
+    neutralized = []
+    for date, date_df in df.groupby('DATE'):  # 截面中性化
+        X = sm.add_constant(date_df['log_mkt'])
+        y = date_df[factor_col]
+        weights = np.sqrt(date_df[mkt_cap_col])
+        model = sm.WLS(y, X, weights=weights).fit()
+        date_df[f'{factor_col}_neutral'] = model.resid
+        neutralized.append(date_df)
+    return pd.concat(neutralized)
+
+
+class DataPath():
+    feather_sh = r'\\DESKTOP-79NUE61\SH_min_data'
+    feather_sz = r'\\DESKTOP-79NUE61\SZ_min_data'
+    data_storage = r'D:\tyx\raw_data'
+    data_storage2=r'Z:\local_data\Data_Storage'
+    # save_path = r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\原始数据\拟使用量价因子\2020-2022.12'1
+    save_path = r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\原始数据\拟使用量价因子\2021.6-2025.8'
+
+
+class Factor_CTR:
+    def __init__(self, time_start='20240102', time_end='20240201', test_ticker=None, rolling_window=20,savepath=None
+                 ,testpath = None):
+        self.time_start = time_start
+        self.time_end = time_end
+        self.tickerpool = test_ticker or r'D:\tyx\raw_data\daily.feather'
+        self.rolling_window = rolling_window
+        self.savepath = savepath or rf'D:\vp_tyx\{self.__class__.__name__}'
+        os.makedirs(self.savepath,exist_ok=True)
+        self.testpath = testpath or r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\原始数据\拟使用量价因子'
+
+    def __load_data(self):
+        # 股票池数据
+        self.tickerpool = pd.read_feather(self.tickerpool)
+        self.tickerpool = self.tickerpool[self.tickerpool['DATE'] <= self.time_end]
+        self.tickerpool = self.tickerpool[self.tickerpool['DATE'] >= self.time_start]
+        # self.tickerpool=self.tickerpool[self.tickerpool['TICKER']=='600051.SH']
+
+        # 股本数据
+        self.total_share = pd.read_hdf(os.path.join(DataPath.data_storage, 'totalShares.h5')).reset_index()
+        self.total_share.rename(columns={'time': 'DATE'}, inplace=True)
+        self.total_share.DATE = self.total_share.DATE.str.replace('-', '')
+        self.total_share = self.total_share[self.total_share['DATE'] <= self.time_end]
+        self.total_share = self.total_share[self.total_share['DATE'] >= self.time_start]
+        # 复权因子
+        adj_df = feather.read_dataframe(os.path.join(DataPath.data_storage2, 'adj_factors.feather'))
+        adj_df = adj_df[adj_df['DATE'] <= self.time_end]
+        adj_df = adj_df[adj_df['DATE'] >= self.time_start]
+
+        # 价格数据
+        self.daily = pd.read_feather(os.path.join(DataPath.data_storage2, 'daily.feather'))
+        self.daily = self.daily[self.daily['DATE'] <= self.time_end]
+        self.daily = self.daily[self.daily['DATE'] >= self.time_start]
+        self.daily=self.daily.merge(adj_df,on=['TICKER', 'DATE'],how='left')
+
+        # date数据
+        self.tar_date_list = sorted(list(self.daily.DATE.drop_duplicates()))
+
+    def save_basic_date(self,date):
+        sh_data = feather.read_dataframe(os.path.join(DataPath.feather_sh, f'{date}.feather'))
+        sz_data = feather.read_dataframe(os.path.join(DataPath.feather_sz, f'{date}.feather'))
+        tmp_sh = sh_data[sh_data['min'] == 930][['TICKER', 'volume']]
+        tmp_sh['volume'] *= 100
+        tmp_sh.columns = ['TICKER','Qty']
+        tmp_sh['DATE'] = date
+
+        tmp_sz = sz_data[sz_data['min'] == 930][['TICKER', 'volume']]
+        tmp_sz['volume'] *= 100
+        tmp_sz.columns = ['TICKER','Qty']
+        tmp_sz['DATE'] = date
+        return pd.concat([tmp_sh,tmp_sz])
+
+    def __concat_data(self):
+        datels = self.tickerpool['DATE'].unique().tolist()
+        if os.path.exists(os.path.join(self.savepath,'集合竞价成交量.feather')):
+            already = feather.read_dataframe(os.path.join(self.savepath,'集合竞价成交量.feather'))
+            datels = list(np.setdiff1d(datels,already['DATE'].unique().tolist()))
+
+        if len(datels) > 0:
+            need_vol = Parallel(n_jobs=12)(delayed(self.save_basic_date)(date) for date in tqdm(datels))
+            need_vol = pd.concat(need_vol).reset_index(drop=True)
+            if os.path.exists(os.path.join(self.savepath,'集合竞价成交量.feather')):
+                old = feather.read_dataframe(os.path.join(self.savepath,'集合竞价成交量.feather'))
+                need_vol = need_vol[~need_vol['DATE'].isin(old['DATE'])]
+                alls = pd.concat([old,need_vol]).reset_index(drop=True)
+                feather.write_dataframe(alls,os.path.join(self.savepath,'集合竞价成交量.feather'))
+            else:
+                feather.write_dataframe(need_vol, os.path.join(self.savepath, '集合竞价成交量.feather'))
+
+    def process_data(self):
+        self.__load_data()
+        self.total_share = self.total_share.melt(id_vars=['DATE'], var_name='TICKER', value_name='total_share')
+        self.total_share = self.total_share[self.total_share['TICKER'].isin(self.tickerpool['TICKER'])]
+        self.daily = self.daily[self.daily['TICKER'].isin(self.tickerpool['TICKER'])]
+        self.daily = self.daily.merge(self.total_share, on=['DATE', 'TICKER'], how='left')[
+            ['DATE', 'TICKER', 'open', 'close', 'volume', 'total_share','adj_factors']]
+        self.daily['close'] *= self.daily['adj_factors']
+        self.daily['open'] *= self.daily['adj_factors']
+        self.daily['mkt_size'] = self.daily['total_share'] * self.daily['close']
+        self.daily.sort_values(['TICKER', 'DATE'], inplace=True)
+        self.daily['pre_close'] = self.daily.groupby('TICKER')['close'].shift(1).values
+        self.daily['intra_ret'] = self.daily['close'] / self.daily['open'] - 1  # 日内收益率
+        self.daily['night_ret'] = self.daily.groupby('TICKER')['close'].shift(1) / self.daily['open'] - 1  # 隔夜收益率
+        self.__concat_data()
+
+        call_auc_vol = feather.read_dataframe(os.path.join(self.savepath,'集合竞价成交量.feather'))
+        self.daily = self.daily.merge(call_auc_vol, on=['DATE', 'TICKER'], how='inner')
+        self.daily['pre_total_share'] = self.daily.groupby('TICKER')['total_share'].shift(1)  # 昨日总股本
+        self.daily['overnight_turn'] = self.daily['Qty'] * 100 / self.daily['pre_total_share']  # 隔夜换手率
+        self.daily.reset_index(drop=True, inplace=True)
+
+    def cal_jump_ctr_fun(self, i):
+        tmp_date_list = self.tar_date_list[i:i + self.rolling_window]
+        tmp = self.daily[self.daily.DATE.isin(tmp_date_list)][['DATE', 'TICKER', 'turnover', 'pre_over_night_smart']]
+        tmp.sort_values(['TICKER', 'DATE'], inplace=True)
+        last_day_turn = tmp.groupby('TICKER')['turnover'].last().reset_index().rename(columns={'turnover': 'tmp_turn'})
+        date_df=tmp.groupby('TICKER', as_index=False)['DATE'].last()
+        tmp.sort_values(['TICKER','pre_over_night_smart'],inplace=True)
+        tmp_res = tmp.groupby('TICKER').head(3).reset_index().rename(columns={'turnover': 'tmp_turn'})
+        tmp_res.drop(columns='level_1', inplace=True)
+        tmp_res = pd.concat([tmp_res, last_day_turn]).groupby('TICKER').mean().reset_index()
+        tmp_res.rename(columns={'tmp_turn': 'jump_ctr'}, inplace=True)
+        tmp = tmp_res.merge(date_df, on='TICKER', how='left')
+        tmp = tmp[['DATE', 'TICKER', 'jump_ctr']]
+        return tmp
+
+    def cal_ctr_fun(self, i):
+        warnings.filterwarnings('ignore')
+        tmp_date_list = self.tar_date_list[i:i + self.rolling_window]
+        tmp = self.daily[self.daily.DATE.isin(tmp_date_list)][['DATE', 'TICKER', 'turnover', 'over_night_smart']]
+        tmp.sort_values(['TICKER', 'DATE'], inplace=True)
+        date_df = tmp.groupby('TICKER', as_index=False)['DATE'].last()
+        tmp['turnover_shift1'] = tmp.groupby('TICKER')['turnover'].shift(1)
+        tmp.sort_values(['TICKER','over_night_smart'],inplace=True)
+        tmp=tmp.groupby('TICKER').head(4)
+        tmp_res = tmp.groupby('TICKER', as_index=False)['turnover_shift1'].mean().rename(columns={'turnover_shift1': 'ctr'})  # 选中当天的数据直接对前天的换手求均值
+        tmp = tmp_res.merge(date_df, on='TICKER', how='left')
+        tmp = tmp[['DATE', 'TICKER', 'ctr']]
+        return tmp
+
+    def cal_factor(self, label=''):
+        warnings.filterwarnings(action='ignore')
+        # 换手率计算
+        self.daily['turnover'] = self.daily['volume'] * 100 / self.daily['total_share']  # 日内换手率
+        self.daily['pre_turnover'] = self.daily.groupby('TICKER')['turnover'].shift(1).values # 昨日换手率
+
+        # 隔夜聪明钱因子计算---------------------------------------------------------------------------------------------
+        print('聪明钱因子生成中...')
+        self.daily.sort_values(['TICKER','DATE'],inplace=True)
+        self.daily['night_turn_min']=self.daily.groupby('TICKER')['night_ret'].rolling(window=20, min_periods=10).min().values
+        self.daily['night_turn_max']=self.daily.groupby('TICKER')['night_ret'].rolling(window=20, min_periods=10).max().values
+        self.daily['smart_tmp']=(self.daily['night_ret']-self.daily['night_turn_min'])/(self.daily['night_turn_max']-self.daily['night_turn_min'])
+        self.daily['over_night_smart'] = self.daily['smart_tmp'] / self.daily['overnight_turn']
+        self.daily['OvernightSmart20'] = self.daily.groupby('TICKER')['over_night_smart'].rolling(window=20,min_periods=10).mean().values
+        df = self.daily[['TICKER', 'DATE', 'OvernightSmart20']]
+        feather.write_dataframe(df,os.path.join(self.savepath,'OvernightSmart20.feather'))
+        self.daily['pre_over_night_smart'] = self.daily.groupby('TICKER')['over_night_smart'].shift(-1)  # 次日隔夜聪明钱
+        # ctr因子计算--------------------------------------------------------------------------------------------------
+        print('ctr因子生成中...')
+        ctr=Parallel(n_jobs=13)(delayed(self.cal_ctr_fun)(i) for i in tqdm(range(len(self.tar_date_list) - self.rolling_window + 1)))
+        ctr = pd.concat(ctr).reset_index(drop=True)
+        # 市值中性化
+        ctr = ctr.merge(self.daily[['DATE', 'TICKER', 'mkt_size']], on=['DATE', 'TICKER'], how='left')
+        ctr.dropna(how='any',axis=0,inplace=True)
+        ctr = neutralize_factor(ctr, 'ctr', 'mkt_size')[['DATE', 'TICKER', 'ctr', 'ctr_neutral']]
+        feather.write_dataframe(ctr,os.path.join(DataPath.save_path, 'ctr.feather'))
+        # jumpctr因子计算----------------------------------------------------------------------------------------------
+        print('jumpctr因子生成中...')
+        jump_ctr=Parallel(n_jobs=13)(delayed(self.cal_jump_ctr_fun)(i) for i in tqdm(range(len(self.tar_date_list) - self.rolling_window + 1)))
+        jump_ctr = pd.concat(jump_ctr).reset_index(drop=True)
+        # 市值中性化
+        jump_ctr = jump_ctr.merge(self.daily[['DATE', 'TICKER', 'mkt_size']], on=['DATE', 'TICKER'], how='left')
+        jump_ctr.dropna(how='any', axis=0, inplace=True)
+        jump_ctr = neutralize_factor(jump_ctr, 'jump_ctr', 'mkt_size')[
+            ['DATE', 'TICKER', 'jump_ctr', 'jump_ctr_neutral']]
+        feather.write_dataframe(jump_ctr,os.path.join(DataPath.save_path, 'jump_ctr.feather'))
+
+    def run(self):
+        self.process_data()
+        self.cal_factor()
+
+if __name__ == '__main__':
+    # res=Factor_CTR(time_start='20200101', time_end='20221231')
+    # res.run()
+    # --------------
+    res = Factor_CTR(time_start='20200101', time_end='20250801')
+    res.run()

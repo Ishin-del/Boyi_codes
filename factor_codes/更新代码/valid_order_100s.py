@@ -152,7 +152,7 @@ def run(start, end):
     # for date in tqdm(tar_list):
     #     tmp=get_tick_data(date)
     #     res.append(tmp)
-    res=Parallel(n_jobs=13)(delayed(get_tick_data)(date) for date in tqdm(tar_list))
+    res=Parallel(n_jobs=2)(delayed(get_tick_data)(date) for date in tqdm(tar_list))
     # res=pd.concat(res).reset_index(drop=True)
     res1=pd.concat([x[0] for x in res]).reset_index(drop=True)
     res2=pd.concat([x[1] for x in res]).reset_index(drop=True)

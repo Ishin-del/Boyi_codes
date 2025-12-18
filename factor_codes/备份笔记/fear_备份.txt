@@ -1,0 +1,26 @@
+# 根据分钟频 拉取日频分钟收益率的波动率,计算并保存
+# if os.path.exists(os.path.join(data_path,'min_ret_std.feather')):
+#     res=feather.read_dataframe(os.path.join(data_path,'min_ret_std.feather'))
+#     if res.DATE.max()<max(tar_date):
+#         print('更新股票分钟收益率波动：')
+#         #todo:
+#         update_list=tar_date[tar_date.index(res.DATE.max())+1:]
+#         update=[]
+#         for path, tar_list in {sh_path: sh_tar_list, sz_path: sz_tar_list}.items():
+#             if tar_list == []:
+#                 continue
+#             tmp=Parallel(n_jobs=12)(delayed(helper)(file+'.feather', path,tar_date,tar_ticker) for file in tqdm(update_list))
+#             update.extend(tmp)
+#         update=pd.concat(update).reset_index(drop=True)
+#         res=pd.concat([res,update]).reset_index(drop=True)
+# else:
+res = []
+print('计算股票分钟收益率波动：')
+for path,tar_list in {sh_path:sh_tar_list, sz_path:sz_tar_list}.items():
+    if tar_list==[]:
+        continue
+    tmp = Parallel(n_jobs=12)(delayed(helper)(file+'.feather', path,tar_date,tar_ticker) for file in tqdm(tar_list))
+    res.extend(tmp)
+res = pd.concat(res).reset_index(drop=True)
+# feather.write_dataframe(res,os.path.join(data_path,'min_ret_std.feather'))
+return res

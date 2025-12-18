@@ -190,6 +190,7 @@ class MSF_half(object):
         data[f'MSF_{half}'] = (data['mean_Vol_daily'] + data['std_Vol_daily']) / 2
         data = data.reset_index(drop=True)
         data = data[['TICKER', 'DATE', f'MSF_{half}']].reset_index(drop=True)
+        data.rename(columns={f'MSF_{half}':f'SSF_v2_half{half}'},inplace=True)
         # print(data)
         # feather.write_dataframe(data,r'C:\Users\admin\Desktop\test.feather')
         # return data

@@ -172,9 +172,9 @@ def update(today='20250904'):
     save_path_update = DataPath.save_path_update
     flag = True
     while flag:
-        if os.path.exists(os.path.join(save_path_update, 'tree_soldier_ret.feather')):
+        if os.path.exists(os.path.join(save_path_old, 'tree_soldier_ret.feather')):
             old_df = feather.read_dataframe(os.path.join(save_path_update, 'tree_soldier_ret.feather'))
-            new_start = sorted(old_df.DATE.drop_duplicates().to_list())[-70]
+            new_start = sorted(old_df.DATE.drop_duplicates().to_list())[-120]
             # new_start='20221001'
             print('因子fear更新中:')
             df = read_data(start=new_start, end=today)  # todo: 每次更新检查，改end

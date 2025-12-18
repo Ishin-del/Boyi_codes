@@ -1,0 +1,225 @@
+import pandas as pd
+import os
+import warnings
+import numpy as np
+import feather
+from tqdm import tqdm
+import statsmodels.api as sm
+
+
+# todo: 更新时，往前回滚时间长一些
+def neutralize_factor(df, factor_col, mkt_cap_col):
+    df['log_mkt'] = np.log(df[mkt_cap_col])
+    neutralized = []
+    for date, date_df in df.groupby('DATE'):  # 截面中性化
+        X = sm.add_constant(date_df['log_mkt'])
+        y = date_df[factor_col]
+        weights = np.sqrt(date_df[mkt_cap_col])
+        model = sm.WLS(y, X, weights=weights).fit()
+        date_df[f'{factor_col}_neutral'] = model.resid
+        neutralized.append(date_df)
+    return pd.concat(neutralized)
+
+
+class DataPath():
+    feather_sh = r'\\DESKTOP-79NUE61\SH_min_data'
+    feather_sz = r'\\DESKTOP-79NUE61\SZ_min_data'
+    data_storage = r'D:\tyx\raw_data'
+    data_storage2=r'Z:\local_data\Data_Storage'
+    save_path = r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\原始数据\拟使用量价因子\2021.6-2025.8'
+
+
+class Factor_CTR:
+    def __init__(self, time_start='20240102', time_end='20240201', test_ticker=None, rolling_window=20):
+        self.time_start = time_start
+        self.time_end = time_end
+        self.tickerpool = test_ticker or r'D:\tyx\raw_data\daily.feather'
+        self.rolling_window = rolling_window
+
+    def __load_data(self):
+        # 股票池数据
+        self.tickerpool = pd.read_feather(self.tickerpool)
+        self.tickerpool = self.tickerpool[self.tickerpool['DATE'] <= self.time_end]
+        self.tickerpool = self.tickerpool[self.tickerpool['DATE'] >= self.time_start]
+        # self.tickerpool=self.tickerpool[self.tickerpool['TICKER']=='600051.SH']
+
+        # 股本数据
+        self.total_share = pd.read_hdf(os.path.join(DataPath.data_storage1, 'totalShares.h5')).reset_index()
+        self.total_share.rename(columns={'time': 'DATE'}, inplace=True)
+        self.total_share.DATE = self.total_share.DATE.str.replace('-', '')
+        self.total_share = self.total_share[self.total_share['DATE'] <= self.time_end]
+        self.total_share = self.total_share[self.total_share['DATE'] >= self.time_start]
+        # 复权因子
+        adj_df = feather.read_dataframe(os.path.join(DataPath.data_storage2, 'adj_factors.feather'))
+        adj_df = adj_df[adj_df['DATE'] <= self.time_end]
+        adj_df = adj_df[adj_df['DATE'] >= self.time_start]
+
+        # 价格数据
+        self.daily = pd.read_feather(os.path.join(DataPath.data_storage2, 'daily.feather'))
+        self.daily = self.daily[self.daily['DATE'] <= self.time_end]
+        self.daily = self.daily[self.daily['DATE'] >= self.time_start]
+        self.daily=self.daily.merge(adj_df,on=['TICKER', 'DATE'],how='left')
+
+    def __concat_data(self):
+        '''因为文件太大，读数据会有点慢'''
+        path = [DataPath.feather_sh, DataPath.feather_sz]
+        res = []
+        for p in path:
+            for file in tqdm(os.listdir(p)):
+                if file[:8] in self.tickerpool['DATE'].to_list():
+                    tmp = feather.read_dataframe(os.path.join(p, file))
+                    tmp=tmp[tmp['min']==930][['TICKER','volume']]
+                    tmp['volume'] *= 100
+                    tmp['DATE'] = file[:8]
+                    res.append(tmp)
+            # break
+        res = pd.concat(res).reset_index(drop=True)
+        res.rename(columns={'volume':'Qty'},inplace=True)
+        return res
+
+    def process_data(self):
+        self.__load_data()
+        self.total_share = self.total_share.melt(id_vars=['DATE'], var_name='TICKER', value_name='total_share')
+        self.total_share = self.total_share[self.total_share['TICKER'].isin(self.tickerpool['TICKER'])]
+        self.daily = self.daily[self.daily['TICKER'].isin(self.tickerpool['TICKER'])]
+        self.daily = self.daily.merge(self.total_share, on=['DATE', 'TICKER'], how='left')[
+            ['DATE', 'TICKER', 'open', 'close', 'volume', 'total_share']]
+
+        self.daily['close'] *= self.daily['adj_factors']
+        self.daily['open'] *= self.daily['adj_factors']
+
+        self.daily['mkt_size'] = self.daily['total_share'] * self.daily['close']
+        self.daily.sort_values(['TICKER', 'DATE'], inplace=True)
+        self.daily['pre_close'] = self.daily.groupby('TICKER')['close'].shift(1).values
+        self.daily['intra_ret'] = self.daily['close'] / self.daily['open'] - 1  # 日内收益率
+        self.daily['night_ret'] = self.daily.groupby('TICKER')['close'].shift(1) / self.daily['open'] - 1  # 隔夜收益率
+        call_auc_vol = self.__concat_data()
+        self.daily = self.daily.merge(call_auc_vol, on=['DATE', 'TICKER'], how='inner')
+        self.daily['pre_total_share'] = self.daily.groupby('TICKER')['total_share'].shift(1)  # 昨日总股本
+        self.daily['overnight_turn'] = self.daily['Qty'] * 100 / self.daily['pre_total_share']  # 隔夜换手率
+        self.daily.reset_index(drop=True, inplace=True)
+
+    def cal(self, main_label, help_label, cols):
+        tar_date_list = sorted(list(self.daily.DATE.drop_duplicates()))
+        fac = []
+        for i in range(len(tar_date_list) - self.rolling_window + 1):
+            tmp_date_list = tar_date_list[i:i + self.rolling_window]
+            tmp = self.daily[self.daily.DATE.isin(tmp_date_list)][['DATE', 'TICKER', help_label, main_label]]
+            tmp=tmp.groupby('TICKER').filter(lambda x: len(x) >= 20)
+            tmp.sort_values(['TICKER', 'DATE'], inplace=True)
+            date_df = tmp.groupby('TICKER')['DATE'].last().reset_index()
+            tmp.sort_values(['TICKER', help_label], inplace=True)
+            tmp_res = tmp.groupby('TICKER', as_index=False)[main_label].apply(
+                lambda x: [np.mean(x.iloc[i:i + 4]) for i in range(0, len(x), 4)])
+            help = pd.DataFrame(tmp_res[main_label].tolist(), index=tmp_res.index)
+            tmp_res = tmp_res.merge(help, left_index=True, right_index=True).drop(columns=main_label)
+            tmp_res = tmp_res.merge(date_df, on='TICKER', how='left')
+            tmp_res.columns = ['TICKER'] + cols + ['DATE']
+            fac.append(tmp_res)
+        # fac=fac[['TICKER','DATE']+cols]
+        fac = pd.concat(fac).reset_index(drop=True)
+        return fac
+
+    def cal_factor(self, label=''):
+        warnings.filterwarnings(action='ignore')
+        # 换手率计算
+        self.daily['turnover'] = self.daily['volume'] * 100 / self.daily['total_share']  # 日内换手率
+        self.daily['pre_turnover'] = self.daily.groupby('TICKER')['turnover'].shift(1).values  # 昨日换手率
+        tar_date_list = sorted(list(self.daily.DATE.drop_duplicates()))
+        # if label=='': # 成交量对动量因子的修正：日内切割 1
+        # df1 = self.cal(main_label='intra_ret', help_label='turnover',
+        #                cols=['intra_cut_1', 'intra_cut_2', 'intra_cut_3', 'intra_cut_4', 'intra_cut_5'])
+        # df1.to_feather(os.path.join(DataPath.save_path, 'check1.feather'))
+
+        # elif label=='n': # 成交量对动量因子的修正：隔夜切割 2
+        df2 = self.cal(main_label='night_ret', help_label='pre_turnover',
+                       cols=['night_cut_1', 'night_cut_2', 'night_cut_3', 'night_cut_4', 'night_cut_5'])
+        df2.to_feather(os.path.join(DataPath.save_path, 'check2.feather'))
+
+        # elif label=='tr': # 换手率对异质信念的识别：日内收益率的辅助 3
+        df3 = self.cal(main_label='turnover', help_label='intra_ret',
+                       cols=['intra_help_1', 'intra_help_2', 'intra_help_3', 'intra_help_4', 'intra_help_5'])
+        df3.to_feather(os.path.join(DataPath.save_path, 'check3.feather'))
+
+        # elif label=='tr_n': # 换手率对异质信念的识别：次日隔夜收益率的辅助 4
+        df4 = self.cal(main_label='turnover', help_label='night_ret',
+                       cols=['night_help_1', 'night_help_2', 'night_help_3', 'night_help_4', 'night_help_5'])
+        df4.to_feather(os.path.join(DataPath.save_path, 'check4.feather'))
+
+        # elif label=='tr_o': #换手率对异质信念的识别：次日隔夜换手率的辅助 5
+        df5 = self.cal(main_label='overnight_turn', help_label='night_ret',
+                       cols=['night_turn_1', 'night_turn_2', 'night_turn_3', 'night_turn_4', 'night_turn_5'])
+        df5.to_feather(os.path.join(DataPath.save_path, 'check5.feather'))
+
+        # elif label=='smart':# 隔夜聪明钱 6
+        self.daily['smart_tmp'] = self.daily.groupby('TICKER')['night_ret'].transform(
+            lambda x: (x - x.min()) / (x.max() - x.min()))
+        self.daily['over_night_smart'] = self.daily['smart_tmp'] / self.daily['overnight_turn']
+        df6 = self.daily[['TICKER', 'DATE', 'over_night_smart']]
+        # df6.to_feather(os.path.join(DataPath.save_path, 'check6.feather'))
+
+        # elif label=='smart_help': # 7
+        self.daily['pre_over_night_smart'] = self.daily.groupby('TICKER')['over_night_smart'].shift(-1)  # 次日隔夜聪明钱
+        df7 = self.cal(main_label='turnover', help_label='pre_over_night_smart',
+                       cols=['smart_help_1', 'smart_help_2', 'smart_help_3', 'smart_help_4', 'smart_help_5'])
+        df7.to_feather(os.path.join(DataPath.save_path, 'check7.feather'))
+
+        # elif label=='ctr': # 8
+        ctr = []
+        for i in range(len(tar_date_list) - self.rolling_window + 1):
+            tmp_date_list = tar_date_list[i:i + self.rolling_window]
+            tmp = self.daily[self.daily.DATE.isin(tmp_date_list)][['DATE', 'TICKER', 'turnover', 'over_night_smart']]
+            tmp.sort_values(['TICKER', 'DATE'], inplace=True)
+            # 取前一天的换手,并到当天
+            tmp['turnover_shift1'] = tmp.groupby('TICKER')['turnover'].shift(1)
+            tmp_res = tmp.groupby('TICKER', as_index=False).apply(
+                lambda x: x.sort_values('over_night_smart')['turnover_shift1'].head(4).mean()).rename(
+                columns={None: 'ctr'}) # 选中当天的数据直接对前天的换手求均值
+            tmp = tmp.merge(tmp_res, on='TICKER', how='left')
+            tmp.drop_duplicates(['ctr', 'TICKER'], keep='last', inplace=True) #日期取最后一天的
+            tmp = tmp[['DATE', 'TICKER', 'ctr']]
+            ctr.append(tmp)
+        ctr = pd.concat(ctr).reset_index(drop=True)
+        # 市值中性化
+        ctr = ctr.merge(self.daily[['DATE', 'TICKER', 'mkt_size']], on=['DATE', 'TICKER'], how='left')
+        ctr.dropna(how='any',axis=0,inplace=True)
+        ctr = neutralize_factor(ctr, 'ctr', 'mkt_size')[['DATE', 'TICKER', 'ctr', 'ctr_neutral']]
+        ctr.to_feather(os.path.join(DataPath.save_path, 'check8.feather'))
+
+        # elif label=='jump_ctr': #9
+        jump_ctr = []
+        for i in range(len(tar_date_list) - self.rolling_window + 1):
+            tmp_date_list = tar_date_list[i:i + self.rolling_window]
+            tmp = self.daily[self.daily.DATE.isin(tmp_date_list)][
+                ['DATE', 'TICKER', 'turnover', 'pre_over_night_smart']]
+            tmp.sort_values(['TICKER', 'DATE'], inplace=True)
+            last_day_turn = tmp.groupby('TICKER')['turnover'].last().reset_index().rename(
+                columns={'turnover': 'tmp_turn'})
+            tmp_res = tmp.groupby('TICKER').apply(lambda x: x.sort_values('pre_over_night_smart')[
+                'turnover'].head(3)).reset_index().rename(columns={'turnover': 'tmp_turn'})
+            tmp_res.drop(columns='level_1', inplace=True)
+            tmp_res = pd.concat([tmp_res, last_day_turn]).groupby('TICKER').mean().reset_index()
+            tmp_res.rename(columns={'tmp_turn': 'jump_ctr'}, inplace=True)
+            tmp = tmp.merge(tmp_res, on='TICKER', how='left')
+            tmp.drop_duplicates(['jump_ctr', 'TICKER'], keep='last', inplace=True)
+            tmp = tmp[['DATE', 'TICKER', 'jump_ctr']]
+            jump_ctr.append(tmp)
+        jump_ctr = pd.concat(jump_ctr).reset_index(drop=True)
+        # 市值中性化
+        jump_ctr = jump_ctr.merge(self.daily[['DATE', 'TICKER', 'mkt_size']], on=['DATE', 'TICKER'], how='left')
+        jump_ctr.dropna(how='any', axis=0, inplace=True)
+        jump_ctr = neutralize_factor(jump_ctr, 'jump_ctr', 'mkt_size')[
+            ['DATE', 'TICKER', 'jump_ctr', 'jump_ctr_neutral']]
+        jump_ctr.to_feather(os.path.join(DataPath.save_path, 'check9.feather'))
+
+    def run(self):
+        self.process_data()
+        self.cal_factor()
+
+
+if __name__ == '__main__':
+    res=Factor_CTR(time_start='20200101', time_end='20221231')
+    res.run()
+    # --------------
+    # res = Factor_CTR(time_start='20210601', time_end='20250801')
+    # res.run()

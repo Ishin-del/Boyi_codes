@@ -213,7 +213,7 @@ class SSF_half(object):
         data[f'SSF_{half}'] = (data['mean_Vol_daily'] + data['std_Vol_daily']) / 2
         data = data.reset_index(drop=True)
         data = data[['TICKER', 'DATE', f'SSF_{half}']].reset_index(drop=True)
-
+        data.rename(columns={f'SSF_{half}':f'SSF_half{half}'},inplace=True)
         # data = data[['TICKER','DATE',f'SSF_{half}']]
         if os.path.exists(self.savepath + f'\\SSF_half{self.halflife}.feather'):
             dtz = feather.read_dataframe(self.savepath + f'\\SSF_half{self.halflife}.feather')

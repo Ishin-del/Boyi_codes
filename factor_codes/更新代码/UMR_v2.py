@@ -70,6 +70,9 @@ def run(start,end):
     risk_path = r'\\DESKTOP-79NUE61\Factor_Storage\Barra_日频\nlsize.feather'
     tmp = feather.read_dataframe(risk_path)
     tmp = tmp[(tmp['DATE'] > start) & (tmp['DATE'] < end)]
+    tmp.replace([np.inf,-np.inf],np.nan,inplace=True)
+    tmp.dropna(inplace=True)
+    tmp=process_na_stock(tmp,col='nlsize')
     tmp['nlsize_risk'] = tmp.groupby('TICKER')['nlsize'].transform(lambda x: x.rolling(20, 5).mean())
     tmp['nlsize_risk'] = tmp['nlsize_risk'] - tmp['nlsize']
     tmp.drop(columns='nlsize', inplace=True)
@@ -151,8 +154,8 @@ def update_muli(filename,today,run,num=-50):
                     exit()
     else:
         print('因子生成中')
-        res=run(start='20200101',end='20221231')
-        # res=run(start='20211201',end='20250801')
+        # res=run(start='20200101',end='20221231')
+        res=run(start='20200101',end='20251104')
         # res=run(start='20250828',end='20250829')
         for df in res:
             for col in df.columns[2:]:
@@ -164,11 +167,11 @@ def update_muli(filename,today,run,num=-50):
 
 
 def update(today):
-    update_muli('nlsize_risk_factor_adjust.feather',today,run,-90)
+    update_muli('nlsize_risk_factor_adjust.feather',today,run,-120)
 
 if __name__=='__main__':
     # run('20250102','20250417')
     t1=time.time()
-    update('20251016')
+    update('20251103')
     t2=time.time()
     print((t2-t1)/60)

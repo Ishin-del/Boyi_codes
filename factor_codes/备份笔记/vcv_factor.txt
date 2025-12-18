@@ -1,0 +1,69 @@
+import os
+import feather
+import pandas as pd
+from tqdm import tqdm
+import warnings
+import sys
+from joblib import Parallel,delayed
+sys.path.append('../')
+warnings.filterwarnings(action='ignore')
+
+# 招商证券 高频寻踪：再觅知情交易者的踪迹
+# VCV因子
+
+class VCV(object):
+    def __init__(self, start=None, end=None, path=None,data = pd.DataFrame(),stock_pool=None,savepath=None):
+        self.data = data
+        self.savepath=savepath or r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\原始数据\拟使用量价因子'  # 个人因子库路径
+        self.start = start or '20200101'   # 开始日期
+        self.end = end or '20250801'   # 结束日期
+        self.stock_pool=stock_pool or r'D:\tyx\raw_data\daily.feather'
+        self.path = path or r'D:\tyx\raw_data\daily.feather'   # 基础数据文件夹路径，一般是datacenter SSD盘Data_Storage
+
+        self.sh_path=r'\\192.168.1.210\SH_min_data'
+        self.sz_path=r'\\192.168.1.210\SZ_min_data'
+
+    def cal_data(self,df):
+        """分钟数据的volume的均值和标准差"""
+        df = df[(df['min'] < 1457) | (df['min'] > 1459)]
+        df=df.groupby(['TICKER','DATE'])['volume'].agg(['std','mean']).reset_index()
+        df['vcv_daily']=df['std']/df['mean']
+        df.drop(columns=['std', 'mean'],inplace=True)
+        df=df[['TICKER', 'DATE','vcv_daily']]
+        return df
+
+    def fun(self,file,use_date,path,use_ticker):
+        if file[:8] in list(use_date):
+            tmp = feather.read_dataframe(os.path.join(path, file))
+            tmp = tmp[tmp.TICKER.isin(use_ticker)]
+            tmp = self.cal_data(tmp)
+            return tmp
+        return
+
+    def cal(self):
+        self.stock_pool = feather.read_dataframe(os.path.join(self.path),columns=['TICKER', 'DATE', 'volume'])
+        self.stock_pool = self.stock_pool[(self.stock_pool['DATE'] <= self.end) & (self.stock_pool['DATE'] >= self.start)]
+
+        use_ticker = self.stock_pool.TICKER.drop_duplicates()
+        use_date = self.stock_pool.DATE.drop_duplicates()
+        res = []
+        for path in [self.sh_path, self.sz_path]:
+            tmp = Parallel(n_jobs=14)(delayed(self.fun)(f,use_date,path,use_ticker) for f in tqdm(os.listdir(path)))
+            res.extend(tmp)
+        res = pd.concat(res).reset_index(drop=True)
+        res.to_feather(os.path.join(os.path.join(self.savepath, 'vcv_daily.feather')))
+
+    def run(self):
+        self.cal()
+
+
+if __name__ == '__main__':
+    object = VCV(savepath=r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\原始数据\拟使用量价因子\2020-2022.12',
+                 start='20200101',end='20221231')
+    # break_point = 1
+    object.run()
+    # -----------------
+    object1 = VCV(savepath=r'\\DESKTOP-79NUE61\Factor_Storage\田逸心\原始数据\拟使用量价因子\2021.6-2025.8',
+                 start='20210601', end='20250801')
+    # break_point = 1
+    object1.run()

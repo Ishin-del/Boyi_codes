@@ -45,19 +45,19 @@ def run(start='20250102',end='20250401'):
     daily_df['turnover_20_sum'] = daily_df.groupby('TICKER')['turnover'].transform(lambda x: x.rolling(20, 5).sum())
     daily_df['volatility_20'] = daily_df.groupby('TICKER')['daily_ret'].transform(lambda x: x.rolling(20, 5).std())
     daily_df.set_index(['TICKER','DATE'],inplace=True)
-    t1=time.time()
+    # t1=time.time()
     tmp1=daily_df.groupby('TICKER').apply(help).reset_index(drop=True).rename(columns={0:'turnTail4Sum',1:'retTail4Std'})
     tmp1.index=daily_df.index
     tmp2=daily_df.groupby('TICKER').apply(help,ascending=False).reset_index(drop=True).rename(columns={0:'turnHead4Sum',1:'retHead4Std'})
     tmp2.index=daily_df.index
-    t2=time.time()
-    print((t2-t1)/60)
+    # t2=time.time()
+    # print((t2-t1)/60)
     daily_df=daily_df.merge(tmp1.reset_index(),on=['DATE','TICKER'],how='inner').merge(tmp2.reset_index(),on=['DATE','TICKER'],how='inner')
     daily_df['turnTail4Sum_ratio']=daily_df['turnTail4Sum']/daily_df['turnover_20_sum']
     daily_df['turnHead4Sum_ratio']=daily_df['turnHead4Sum']/daily_df['turnover_20_sum']
-    daily_df['retTail4Std_ratio']=daily_df['retTail4Std']/daily_df['volatility_20']
-    daily_df['retHead4Std_ratio']=daily_df['retHead4Std']/daily_df['volatility_20']
-    daily_df=daily_df[['DATE', 'TICKER','turnTail4Sum_ratio','turnHead4Sum_ratio','retTail4Std_ratio','retHead4Std_ratio']]
+    # daily_df['retTail4Std_ratio']=daily_df['retTail4Std']/daily_df['volatility_20']
+    # daily_df['retHead4Std_ratio']=daily_df['retHead4Std']/daily_df['volatility_20']
+    daily_df=daily_df[['DATE', 'TICKER','turnTail4Sum_ratio','turnHead4Sum_ratio']] #,'retTail4Std_ratio','retHead4Std_ratio'
     # print(daily_df)
     return [daily_df]
 
@@ -85,7 +85,7 @@ def update_muli(filename,today,run,num=-50):
                     old=pd.concat([old,tmp]).reset_index(drop=True).drop_duplicates()
                     print(old)
                     feather.write_dataframe(old,os.path.join(DataPath.save_path_update,col+'.feather'))
-                    # feather.write_dataframe(old,os.path.join(DataPath.factor_out_path,col+'.feather'))
+                    feather.write_dataframe(old,os.path.join(DataPath.factor_out_path,col+'.feather'))
                 else:
                     print(test[~np.isclose(test.iloc[:,2],test.iloc[:,3])])
                     # tt=test[~np.isclose(test.iloc[:, 2], test.iloc[:, 3])]

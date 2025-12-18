@@ -12,6 +12,8 @@ import statsmodels.formula.api as smf
 from statsmodels.api import OLS
 # from test_tools.cyy_funcs import kill_mutil_process
 from tool_tyx.path_data import DataPath
+from tool_tyx.tyx_funcs import get_auc_data
+
 """  开源证券：日内分钟收益率的时序特征：逻辑讨论与因子增强——市场微观结构研究系列（19）
       时序特征：跌幅时间重心偏离因子"""
 
@@ -75,18 +77,23 @@ class GUD:
         df_calendar = df_calendar[(df_calendar['DATE'] >= self.start_date) & (df_calendar['DATE'] <= self.end_date)]
         df_calendar = df_calendar.sort_values(by='DATE', ascending=True)
         # 生成交易日期序列
-        self.date_list = df_calendar['DATE']
+        # self.date_list = df_calendar['DATE']
+        # todo:
+        self.date_list = '20220104'
+
 
     def load_min_data(self, file_name):
         warnings.filterwarnings('ignore')
         pid = os.getpid() #当前进程的PID
-        # 加载一分钟数据并计算每天的因子
-        try:
-            df_min1 = feather.read_dataframe(os.path.join(self.sh_min_path, file_name))
-            df_min2=feather.read_dataframe(os.path.join(self.sz_min_path, file_name))
-        except FileNotFoundError:
-            return
-        df_min=pd.concat([df_min1,df_min2]).reset_index(drop=True)[['TICKER','DATE','open','close','min','volume']]
+        # # 加载一分钟数据并计算每天的因子
+        # try:
+        #     df_min1 = feather.read_dataframe(os.path.join(self.sh_min_path, file_name))
+        #     df_min2=feather.read_dataframe(os.path.join(self.sz_min_path, file_name))
+        # except FileNotFoundError:
+        #     return
+        # df_min=pd.concat([df_min1,df_min2]).reset_index(drop=True)[['TICKER','DATE','open','close','min','volume']]
+        df_min=get_auc_data(date='20220104')
+        df_min.rename(columns={'time':'min'},inplace=True)
         # 剔除每天vol求和为0,收盘价为0的股票
         df_min['ret'] = df_min['close'] / df_min['open'] - 1
         # 对每只股票生成时间标识序列
@@ -124,6 +131,7 @@ class GUD:
         # res_df = df_min[['TICKER', 'DATE', 'G_u', 'G_d', 'time_diff', 'time_dist']]
         # res_df.dropna(subset=['G_u', 'G_d'], inplace=True)  # 回归的两列不能有缺失值
         # res_df = res_df.drop_duplicates().reset_index(drop=True)
+        print(df_out)
         return df_out, pid
 
     def cal_daily(self):
@@ -135,7 +143,9 @@ class GUD:
             exist_date = []
 
         # file_list = [x[:4] + '-' + x[4:6] + '-' + x[6:8] + '.feather' for x in np.setdiff1d(self.date_list, exist_date)]
-        file_list = [x+ '.feather' for x in np.setdiff1d(self.date_list, exist_date)]
+        # todo:
+        # file_list = [x+ '.feather' for x in np.setdiff1d(self.date_list, exist_date)]
+        file_list = ['20220104.feather']
         if len(file_list) == 0:
             print('无需更新basic')
         else:
@@ -161,6 +171,8 @@ class GUD:
 
         factor_old = pd.merge(daily, factor_old, on=['TICKER','DATE'], how='left')
         self.GUD_daily = factor_old.sort_values(by=['DATE','TICKER']).reset_index(drop=True)
+        print(self.GUD_daily)
+
 
     def cal_F(self):
         '''# self.GUD_daily应该是从头到尾 每次跑一遍'''
@@ -194,6 +206,7 @@ class GUD:
         out_put_factors = ['G_u','G_d','time_diff', 'DTGD','TGD'] #,'time_dist'
         for col in out_put_factors:
             df_out = self.GUD_daily[['TICKER', 'DATE',col]]
+            df_out.rename(columns={col:'TGD_' + col},inplace=True)
             print(df_out)
             feather.write_dataframe(df_out, os.path.join(DataPath.save_path_update, 'TGD_'+col + '.feather'))
             feather.write_dataframe(df_out, os.path.join(self.savepath, 'TGD_' + col + '.feather'))
@@ -216,4 +229,5 @@ def update(today='20250822'):
     GUD(start='20200101', end=today, savepath=DataPath.factor_out_path).run()
 
 if __name__ == '__main__':
-    update()
+    # update('20251021')
+    GUD(start='20220104', end='20220104', savepath='').cal_daily()

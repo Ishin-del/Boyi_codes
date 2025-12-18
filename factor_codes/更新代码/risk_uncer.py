@@ -14,7 +14,7 @@ import pandas as pd
 from joblib import Parallel, delayed
 from tqdm import tqdm
 from tool_tyx.path_data import DataPath
-from tool_tyx.tyx_funcs import read_min_data, get_tar_date,process_na_stock
+from tool_tyx.tyx_funcs import read_min_data, get_tar_date, process_na_stock, get_auc_data
 import os
 
 def update_muli(filename,today,run,num=-100):
@@ -58,6 +58,7 @@ def update_muli(filename,today,run,num=-100):
                 feather.write_dataframe(tmp,os.path.join(DataPath.save_path_update,col+'.feather'))
                 # feather.write_dataframe(tmp,os.path.join(r'C:\Users\admin\Desktop\test',col+'.feather'))
 
+
 def linear_fun(df, y, x):
     X = sm.add_constant(df[x])
     y = df[y]
@@ -71,6 +72,7 @@ def get_data(date,mkt_df):
     if df.empty:
         return
     df=df[(df['min']!=930)&(df['min']<1457)][['TICKER','DATE','close']]
+    # df=get_auc_data(date='20220104')
     df.sort_values(['TICKER','DATE'],inplace=True)
     # df['ret']=df.groupby('TICKER')['close'].pct_change()
     df['ret']=df.groupby('TICKER')['close'].pct_change(periods=4)
@@ -130,6 +132,7 @@ def run(start,end):
     #     res.append(tmp)
     #     print(tmp)
     res=Parallel(n_jobs=15)(delayed(get_data)(date,mkt_df[mkt_df.DATE == int(date)][['DATE', 'mkt_ret']]) for date in tqdm(tar_list))
+    # print(res)
     res=pd.concat(res).reset_index(drop=True)
     res=process_na_stock(res,'RV')
     res.replace([np.inf,-np.inf],np.nan,inplace=True)
@@ -155,7 +158,7 @@ def update(today='20250905'):
     update_muli('RV_roll5.feather',today,run)
 
 if __name__=='__main__':
-    # run('20250102','20250112')
+    # run('20220104','20220104')
     update()
     # res1=run('20220601','20221231')
     # feather.write_dataframe(res1, r'C:\Users\admin\Desktop\check1.feather')

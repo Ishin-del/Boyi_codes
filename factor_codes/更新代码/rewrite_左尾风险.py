@@ -6,15 +6,10 @@ import pandas as pd
 from tqdm import tqdm
 from joblib.parallel import Parallel, delayed, cpu_count
 import warnings
-from sklearn.linear_model import LinearRegression
 import math
 import time
 
 from tool_tyx.path_data import DataPath
-
-start = time.time()
-
-
 class factor_leftail(object):
     pd.set_option('display.max_columns', 18)
     pd.set_option('display.width', 1000)
@@ -65,6 +60,7 @@ class factor_leftail(object):
             # feather.write_dataframe(nowdata, self.savepath + f'{Fct_list[i]}.feather')
             # print(f'{Fct_list[i]} has been saved')
         df1=factor_df[['DATE','TICKER',Fct_list[0]]]
+        df1.rename(columns={'VaR_5%':'VaR_5%_v2'},inplace=True)
         # df2=factor_df[['DATE','TICKER',Fct_list[1]]]
         # df3=factor_df[['DATE','TICKER',Fct_list[2]]]
         # df4=factor_df[['DATE','TICKER',Fct_list[3]]]
@@ -107,6 +103,7 @@ def update(today='20250820'):
             print(data)
             feather.write_dataframe(data, os.path.join(DataPath.save_path_old,file_name))
             feather.write_dataframe(data, os.path.join(DataPath.save_path_update,file_name))
+            feather.write_dataframe(data, os.path.join(DataPath.factor_out_path, file_name))
 
 if __name__ == '__main__':
     update()
